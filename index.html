@@ -21,6 +21,8 @@ svg.i .f{fill:currentColor}
 .top h1{font-size:22px;font-weight:600;margin:0;flex:1;letter-spacing:-.01em}
 .ib{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--ink)}
 .ib:active{background:var(--line)}
+.ib.sh{width:36px;height:36px;color:var(--mute);text-decoration:none}
+.ib.sh:hover{color:var(--acc)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px}
 .list{display:flex;flex-direction:column;gap:10px}
 .mute{color:var(--mute);font-size:13px}
@@ -475,7 +477,7 @@ function vEditor(){
     <div class="sum"><div><span class="mute">Exercices</span><b>${w.items.length}</b></div><div><span class="mute">Séries</span><b>${runs(w).reduce((a,r)=>a+r.idx.reduce((q,k)=>q+(w.items[k].exoId==='pause'?0:w.items[k].sets*(w.items[k].sides?2:1)),0)*(r.blk?w.blocks[r.blk].rounds:1),0)}</b></div><div class="t"><span>Durée</span><b>${Math.round(totalTime(w)/60)} min</b></div></div>
     <div class="card" style="margin-bottom:14px"><div class="row" style="gap:10px">${num('prep','Préparation (s)',0,60)}${num('prepEx','Prépa entre exos (s)',0,30)}${num('pause','Pause entre exos (s)',0,180,5)}</div></div>
     <div class="tlw"><div class="tlr" id="tlr"></div><div class="list">${items || '<div class="empty">Ajoute des exercices depuis le catalogue.</div>'}
-      <div class="row"><button class="btn" style="flex:1" data-act="addex">${ico('plus')} Exercice</button><button class="btn" style="flex:1" data-act="addpause">${ico('plus')} Pause</button><button class="btn" style="flex:1" data-act="addcirc">${ico('plus')} Circuit</button></div>
+      <div class="row" style="flex-wrap:wrap"><button class="btn" style="flex:1 1 40%" data-act="addex">${ico('plus')} Exercice</button><button class="btn" style="flex:1 1 40%" data-act="addpause">${ico('plus')} Pause</button><button class="btn" style="flex:1 1 100%" data-act="addcirc">${ico('plus')} Circuit</button></div>
       ${Object.keys(w.blocks||{}).length ? '<div class="dz" data-end="1">Déposer ici pour sortir d\'un circuit</div>' : ''}</div></div>
     ${shareRow(w)}
     <div style="position:sticky;bottom:12px;margin-top:18px"><button class="btn p w" data-act="run" data-id="${w.id}" style="padding:15px;font-size:17px">${ico('play')} Lancer la séance</button></div>`;
@@ -500,11 +502,11 @@ function workoutText(w){
 }
 function shareRow(w){
   const t = encodeURIComponent(workoutText(w));
-  return `<div class="mute" style="margin:18px 0 6px">Partager la séance</div><div class="row" style="flex-wrap:wrap">
-    <a class="btn" href="mailto:?subject=${encodeURIComponent(w.name)}&body=${t}">${ico('mail')} Mail</a>
-    <a class="btn" href="https://wa.me/?text=${t}" target="_blank" rel="noopener">${ico('wa')} WhatsApp</a>
-    <a class="btn" href="sms:?&body=${t}">${ico('chat')} Message</a>
-    <button class="btn" data-act="exp">${ico('share')} Fichier .html</button></div>`;
+  return `<div class="row sp" style="margin-top:16px"><span class="mute">Partager la séance</span><div class="row" style="gap:2px">
+    <a class="ib sh" title="Mail" aria-label="Partager par mail" href="mailto:?subject=${encodeURIComponent(w.name)}&body=${t}">${ico('mail')}</a>
+    <a class="ib sh" title="WhatsApp" aria-label="Partager sur WhatsApp" href="https://wa.me/?text=${t}" target="_blank" rel="noopener">${ico('wa')}</a>
+    <a class="ib sh" title="Message" aria-label="Partager par message" href="sms:?&body=${t}">${ico('chat')}</a>
+    <button class="ib sh" title="Fichier .html" aria-label="Partager le fichier .html" data-act="exp">${ico('share')}</button></div></div>`;
 }
 function vCatalogue(){
   const w = U.pick ? wById(U.pick) : null;
