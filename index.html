@@ -477,6 +477,7 @@ function vEditor(){
     <div class="tlw"><div class="tlr" id="tlr"></div><div class="list">${items || '<div class="empty">Ajoute des exercices depuis le catalogue.</div>'}
       <div class="row"><button class="btn" style="flex:1" data-act="addex">${ico('plus')} Exercice</button><button class="btn" style="flex:1" data-act="addpause">${ico('plus')} Pause</button><button class="btn" style="flex:1" data-act="addcirc">${ico('plus')} Circuit</button></div>
       ${Object.keys(w.blocks||{}).length ? '<div class="dz" data-end="1">Déposer ici pour sortir d\'un circuit</div>' : ''}</div></div>
+    ${shareRow(w)}
     <div style="position:sticky;bottom:12px;margin-top:18px"><button class="btn p w" data-act="run" data-id="${w.id}" style="padding:15px;font-size:17px">${ico('play')} Lancer la séance</button></div>`;
 }
 
@@ -485,8 +486,25 @@ function allExos(){
   const ids = new Set(CATALOG.map(e=>e.id)), ov = id => S.custom.find(e=>e.id===id);
   return S.custom.filter(e=>!ids.has(e.id)).concat(CATALOG.map(e=>ov(e.id)||e)).filter(e=>e.id!=='pause');
 }
-function shareText(e){
-  return `${e.nom}\n${GROUPS[e.g]||'Perso'}${e.muscles?' · '+e.muscles:''}\n\n${e.desc}${e.tips?'\n\nConseil : '+e.tips:''}\n\nPar défaut : ${summary(e.def)}`;
+function workoutText(w){
+  const st = startTimes(w), line = (k,ind) => { const it = w.items[k], ex = exoById(it.exoId) || {nom:'?'};
+    return `${ind}${fmt(st[k]||0)}  ${it.exoId==='pause' ? 'Pause · '+it.work+' s' : ex.nom+' · '+summary(it)}`; };
+  const out = [`${w.name}`, `${Math.round(totalTime(w)/60)} min · ${w.items.length} exercices`, ''];
+  runs(w).forEach(r=>{
+    if(!r.blk){ out.push(line(r.idx[0],'')); return; }
+    const b = w.blocks[r.blk]; out.push(`${b.name} × ${b.rounds} tours (pause ${b.pauseEx} s, entre tours ${b.pauseRound} s)`);
+    r.idx.forEach(k=>out.push(line(k,'  ')));
+  });
+  out.push('', `Fin à ${fmt(totalTime(w))}`);
+  return out.join('\n');
+}
+function shareRow(w){
+  const t = encodeURIComponent(workoutText(w));
+  return `<div class="mute" style="margin:18px 0 6px">Partager la séance</div><div class="row" style="flex-wrap:wrap">
+    <a class="btn" href="mailto:?subject=${encodeURIComponent(w.name)}&body=${t}">${ico('mail')} Mail</a>
+    <a class="btn" href="https://wa.me/?text=${t}" target="_blank" rel="noopener">${ico('wa')} WhatsApp</a>
+    <a class="btn" href="sms:?&body=${t}">${ico('chat')} Message</a>
+    <button class="btn" data-act="exp">${ico('share')} Fichier .html</button></div>`;
 }
 function vCatalogue(){
   const w = U.pick ? wById(U.pick) : null;
@@ -512,13 +530,6 @@ function vSheet(){
       <p class="mute">Par défaut : ${summary(e.def)}</p>
       ${tgt ? `<button class="btn p w" data-act="addto" data-id="${e.id}" data-w="${tgt.id}">${ico('plus')} Ajouter à la séance</button>`
       : `<div class="row"><select class="inp" id="addsel">${opts}</select><button class="btn p" data-act="addto" data-id="${e.id}">${ico('plus')}Ajouter</button></div>`}
-      <div class="mute" style="margin:14px 0 6px">Partager</div>
-      <div class="row" style="flex-wrap:wrap">
-        <a class="btn" href="mailto:?subject=${encodeURIComponent(e.nom)}&body=${encodeURIComponent(shareText(e))}">${ico('mail')} Mail</a>
-        <a class="btn" href="https://wa.me/?text=${encodeURIComponent(shareText(e))}" target="_blank" rel="noopener">${ico('wa')} WhatsApp</a>
-        <a class="btn" href="sms:?&body=${encodeURIComponent(shareText(e))}">${ico('chat')} Message</a>
-        ${navigator.share ? `<button class="btn" data-act="shexo" data-id="${e.id}">${ico('share')} Autre…</button>` : ''}
-      </div>
       <div class="mute" style="margin:14px 0 6px">Catalogue</div>
       <div class="row" style="flex-wrap:wrap"><button class="btn" data-act="editexo" data-id="${e.id}">${ico('pencil')} Modifier</button><button class="btn" data-act="dupexo" data-id="${e.id}">${ico('copy')} Dupliquer</button>
         ${e.over ? `<button class="btn d" data-act="resetexo" data-id="${e.id}">Rétablir l'original</button>` : (e.custom ? `<button class="btn d" data-act="delexo" data-id="${e.id}">${ico('trash')} Supprimer</button>` : '')}</div>
@@ -556,6 +567,7 @@ function vEmbed(){
   return `<div class="top"><h1>${esc(w.name)}</h1><button class="ib" data-act="snd" aria-label="Son">${ico(S.settings.sound?'vol':'mute')}</button></div>
     <div class="hero"><h2>${Math.round(totalTime(w)/60)} min · ${w.items.length} exercices</h2><div style="opacity:.9;font-size:14px">Préparation ${w.prep} s · pause ${w.pause} s entre exercices</div></div>
     <div class="list">${items}</div>
+    ${shareRow(w)}
     <div style="position:sticky;bottom:12px;margin-top:18px"><button class="btn p w" data-act="run" data-id="${w.id}" style="padding:15px;font-size:17px">${ico('play')} Démarrer</button></div>`;
 }
 
@@ -670,7 +682,7 @@ function exportHtml(w){
   const data = JSON.stringify({w, exos:Object.values(used)}).replace(/</g,'\\u003c');
   const css = document.getElementById('css').textContent, code = document.getElementById('code').textContent;
   return '<!doctype html>\n<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0F6E56"><title>'
-    + esc(w.name) + '</title><style>' + css + '</style></head><body><div id="app"></div><script>window.__EMBED__=' + data + '<\/script><script>' + code + '<\/script></body></html>';
+    + esc(w.name) + '</title><style id="css">' + css + '</style></head><body><div id="app"></div><script>window.__EMBED__=' + data + '<\/script><script id="code">' + code + '<\/script></body></html>';
 }
 function download(name, text, type){
   const blob = new Blob([text], {type}), url = URL.createObjectURL(blob);
@@ -744,7 +756,6 @@ document.addEventListener('click', ev=>{
     case 'dupexo': { const c = JSON.parse(JSON.stringify(exoById(id))); c.id = 'c'+uid(); c.nom += ' (copie)'; c.custom = true; delete c.over;
         mutate(()=>{ S.custom.push(c); U.sheet = {type:'exo', id:c.id}; }); toast('Exercice dupliqué'); break; }
     case 'resetexo': if(confirm('Rétablir la version d\'origine ?')) mutate(()=>{ S.custom = S.custom.filter(e=>e.id!==id); U.sheet = {type:'exo', id}; }); break;
-    case 'shexo': { const e = exoById(id); if(navigator.share) navigator.share({title:e.nom, text:shareText(e)}).catch(()=>{}); break; }
     case 'delexo': if(confirm('Supprimer cet exercice ?')) mutate(()=>{ S.custom = S.custom.filter(e=>e.id!==id); U.sheet=null; }); break;
     case 'saveexo': {
         const g = x => document.getElementById(x).value, n = x => Math.max(0, parseInt(g(x))||0);
@@ -752,7 +763,7 @@ document.addEventListener('click', ev=>{
         const e = {id:id||('c'+uid()), custom:true, over:!!(id && CATALOG.some(x=>x.id===id)), g:g('fg'), nom:g('fn').trim(), muscles:g('fm'), desc:g('fd'), tips:g('ft'), poses:(id && exoById(id) ? exoById(id).poses : [ST]),
           def:D(g('fmode'), n('fw')||30, n('fre'), n('fs')||1, n('fr')||10, g('fsi')==='1')};
         mutate(()=>{ const k = S.custom.findIndex(x=>x.id===e.id); if(k>=0) S.custom[k]=e; else S.custom.push(e); U.sheet=null; }); break; }
-    case 'exp': { const w = wById(U.wid);
+    case 'exp': { const w = EMB ? S.workouts[0] : wById(U.wid);
         const html = exportHtml(w), name = slug(w.name)+'.html';
         const file = new File([html], name, {type:'text/html'});
         if(navigator.canShare && navigator.canShare({files:[file]})) navigator.share({files:[file], title:w.name}).catch(()=>download(name, html, 'text/html'));
