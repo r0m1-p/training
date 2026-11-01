@@ -447,12 +447,13 @@ function vHome(){
 function stepper(field, val, unit, i){
   return `<div class="step"><button data-act="st" data-i="${i}" data-f="${field}" data-d="-1">−</button><span><input class="stv" type="number" inputmode="numeric" min="0" max="999" data-act="stin" data-i="${i}" data-f="${field}" value="${val}" onfocus="this.select()">${unit}</span><button data-act="st" data-i="${i}" data-f="${field}" data-d="1">+</button></div>`;
 }
+const dfmt = t => { t = Math.round(t); return t<60 ? `${t} s` : `${Math.floor(t/60)} min${t%60 ? ' '+String(t%60).padStart(2,'0')+' s' : ''}`; };
 function summary(it){
   if(it.exoId==='pause') return `${it.work} s`;
   const a = it.mode==='time' ? `${it.work} s` : `${it.reps} reps`;
   const r = it.rest>0 ? ` · repos ${it.rest} s` : '';
   const n = it.sets * (it.sides ? 2 : 1), t = n * (it.mode==='time' ? it.work : it.reps*REP_SEC) + it.rest*(n-1);
-  const tt = t<60 ? `${t} s` : `${Math.floor(t/60)} min${t%60 ? ' '+String(t%60).padStart(2,'0')+' s' : ''}`;
+  const tt = dfmt(t);
   return `${it.sets} × ${a}${it.sides?' / côté':''}${r} · ${it.mode==='reps'?'≈ ':''}${tt}`;
 }
 function vEditor(){
@@ -479,9 +480,16 @@ function vEditor(){
   const bstep = (b,f,val,unit) => `<div class="step"><button data-act="bst" data-b="${b}" data-f="${f}" data-d="-1">−</button><span><input class="stv" type="number" inputmode="numeric" min="0" max="999" data-act="bin" data-b="${b}" data-f="${f}" value="${val}" onfocus="this.select()">${unit}</span><button data-act="bst" data-b="${b}" data-f="${f}" data-d="1">+</button></div>`;
   const blstep = (b,f,val,unit) => `<div class="step"><button data-act="blst" data-bl="${b}" data-f="${f}" data-d="-1">−</button><span><input class="stv" type="number" inputmode="numeric" min="0" max="999" data-act="blin" data-bl="${b}" data-f="${f}" value="${val}" onfocus="this.select()">${unit}</span><button data-act="blst" data-bl="${b}" data-f="${f}" data-d="1">+</button></div>`;
   const usedBl = new Set(w.items.map(it=>blocOf(w,it)).filter(Boolean));
+  const ST = buildSteps(w);
+  const blocDur = idxs => { const set = new Set(idxs), k0 = idxs[0]; let g0 = null, sum = 0, approx = false;
+    ST.forEach(s=>{ if(!set.has(s.k) || (s.rd||1)!==1) return;
+      if(s.k===k0 && g0===null) g0 = s.g;
+      if(s.k===k0 && s.g===g0 && (s.t==='pause' || s.t==='prep') && w.items[k0].exoId!=='pause') return;
+      if(s.dur==null) approx = true; sum += s.est; });
+    return (approx ? '≈ ' : '') + dfmt(sum); };
   const blocHtml = (id, idxs) => {
     const b = w.blocs[id], open = U.openBl===id;
-    const head = `<div class="ith" data-act="openbl" data-bl="${id}" data-blh="${id}"><div class="m"><div class="n">${esc(b.name)}</div><div class="mute">${idxs.length} exercices · pause ${b.pauseEx} s${b.prep?' · prépa '+b.prep+' s':''}</div></div><span class="pill pz">Bloc</span>${ico(open?'up':'down')}</div>`;
+    const head = `<div class="ith" data-act="openbl" data-bl="${id}" data-blh="${id}">${idxs.length ? `<div class="grip" data-blg="${id}" aria-label="Déplacer le bloc">${ico('grip')}</div>` : ''}<div class="m"><div class="n">${esc(b.name)}</div><div class="mute">${idxs.length ? blocDur(idxs)+' · ' : ''}${idxs.length} exercices · pause ${b.pauseEx} s${b.prep?' · prépa '+b.prep+' s':''}</div></div><span class="pill pz">Bloc</span>${ico(open?'up':'down')}</div>`;
     const panel = open ? `<div class="itb"><div class="full"><label>Nom du bloc</label><input class="inp" data-act="blname" data-bl="${id}" value="${esc(b.name)}"></div>
       <div><label>Pause entre exos</label>${blstep(id,'pauseEx',b.pauseEx,' s')}</div><div><label>Préparation</label>${blstep(id,'prep',b.prep||0,' s')}</div>
       <div class="full"><button class="btn w d" data-act="delbl" data-bl="${id}">${ico('trash')} Supprimer le bloc</button></div></div>` : '';
@@ -897,7 +905,7 @@ function dropTarget(x, y){
 function dragMark(t){
   document.querySelectorAll('.dr-b,.dr-a,.hot').forEach(e=>e.classList.remove('dr-b','dr-a','hot'));
   if(!t) return;
-  if(t.kind==='item' && t.j!==DR.i) t.el.classList.add(t.after?'dr-a':'dr-b'); else if(t.kind!=='item') t.el.classList.add('hot');
+  if(t.kind==='item') t.el.classList.add(t.after?'dr-a':'dr-b'); else if(t.kind!=='item') t.el.classList.add('hot');
 }
 function dropItem(from, t){
   const w = wById(U.wid), it = w.items[from]; if(!t) return;
@@ -915,24 +923,41 @@ function dropItem(from, t){
   if(bl) it.bloc = bl; else delete it.bloc;
   U.open = null;
 }
+function dropGroup(bl, idxs, t){
+  const w = wById(U.wid), grp = idxs.map(i=>w.items[i]); if(!t || !grp.length) return;
+  const valid = b => b && w.blocks && w.blocks[b] ? b : undefined;
+  let ref = null, after = false, blk;
+  if(t.kind==='item'){ ref = w.items[t.j]; if(grp.includes(ref)) return; after = t.after; blk = valid(ref.blk);
+    const rb = blocOf(w, ref); if(rb){ const g = w.items.filter(x=>x.bloc===rb && x.blk===ref.blk); ref = after ? g[g.length-1] : g[0]; } }
+  else if(t.kind==='head'){ ref = w.items.find(x=>x.blk===t.b && !grp.includes(x)); blk = valid(t.b); }
+  else if(t.kind==='zone'){ blk = valid(t.b); }
+  else if(t.kind==='bhead'){ if(t.bl===bl) return; ref = w.items.find(x=>x.bloc===t.bl); blk = ref ? valid(ref.blk) : valid(w.blocs[t.bl].blk); }
+  else if(t.kind==='bzone') return;
+  w.items = w.items.filter(x=>!grp.includes(x));
+  if(ref){ const k = w.items.indexOf(ref); w.items.splice(k + (after?1:0), 0, ...grp); } else w.items.push(...grp);
+  grp.forEach(x=>{ if(blk) x.blk = blk; else delete x.blk; });
+  w.blocs[bl].blk = blk || null; U.open = null;
+}
 function dragMove(ev){
   if(!DR) return;
   DR.gh.style.left = ev.clientX+'px'; DR.gh.style.top = ev.clientY+'px';
   DR.sp = ev.clientY < 90 ? -12 : (ev.clientY > innerHeight-90 ? 12 : 0);
-  DR.t = dropTarget(ev.clientX, ev.clientY); dragMark(DR.t);
+  DR.t = dropTarget(ev.clientX, ev.clientY); if(DR.t && DR.card.contains(DR.t.el)) DR.t = null; dragMark(DR.t);
 }
 function dragEnd(commit){
   if(!DR) return; const d = DR; DR = null;
   clearInterval(d.timer); d.gh.remove(); d.card.classList.remove('dragging');
   document.querySelectorAll('.dr-b,.dr-a,.hot').forEach(e=>e.classList.remove('dr-b','dr-a','hot'));
-  if(commit && d.t){ mutate(()=>dropItem(d.i, d.t)); }
+  if(commit && d.t){ mutate(()=> d.bl ? dropGroup(d.bl, d.idxs, d.t) : dropItem(d.i, d.t)); }
 }
 document.addEventListener('pointerdown', ev=>{
   const g = ev.target.closest('.grip'); if(!g || U.view!=='editor') return;
   ev.preventDefault();
-  const i = +g.dataset.i, w = wById(U.wid), ex = exoById(w.items[i].exoId) || {nom:'?'};
-  const gh = document.createElement('div'); gh.className = 'ghost'; gh.textContent = ex.nom; document.body.appendChild(gh);
-  DR = {i, gh, t:null, sp:0, card:g.closest('.card.it')}; DR.card.classList.add('dragging');
+  const w = wById(U.wid), card = g.closest('.card.it'), gh = document.createElement('div'); gh.className = 'ghost';
+  if(g.dataset.blg){ const bl = g.dataset.blg; gh.textContent = w.blocs[bl].name;
+    DR = {bl, idxs:[...card.querySelectorAll('[data-di]')].map(e=>+e.dataset.di), gh, t:null, sp:0, card}; }
+  else { const i = +g.dataset.i; gh.textContent = (exoById(w.items[i].exoId) || {nom:'?'}).nom; DR = {i, gh, t:null, sp:0, card}; }
+  document.body.appendChild(gh); DR.card.classList.add('dragging');
   try{ g.setPointerCapture(ev.pointerId); }catch(e){}
   DR.timer = setInterval(()=>{ if(DR && DR.sp) window.scrollBy(0, DR.sp); }, 16);
   dragMove(ev);
