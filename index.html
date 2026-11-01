@@ -49,22 +49,22 @@ a.btn{color:inherit;text-decoration:none}
 .sum>div{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
 .sum b{display:block;font-size:18px;font-weight:600}
 .sum .t{background:var(--accSoft);border-color:transparent;color:var(--accInk)}
-.step{display:flex;align-items:center;gap:6px}
-.step button{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);font-size:18px;background:var(--card)}
-.step span{min-width:64px;text-align:center;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
-.stv{width:44px;padding:4px 0;border:0;border-bottom:1.5px dashed var(--line);background:transparent;text-align:right;font-weight:600;font-size:16px;border-radius:0;-moz-appearance:textfield}
+.step{display:flex;align-items:center;gap:4px}
+.step button{width:30px;height:32px;flex:none;border-radius:10px;border:1px solid var(--line);font-size:18px;background:var(--card)}
+.step span{min-width:52px;flex:1;text-align:center;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.stv{width:36px;padding:4px 0;border:0;border-bottom:1.5px dashed var(--line);background:transparent;text-align:right;font-weight:600;font-size:16px;border-radius:0;-moz-appearance:textfield}
 .stv::-webkit-outer-spin-button,.stv::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .stv:focus{outline:none;border-bottom-color:var(--acc)}
 .step span:has(.stv){display:flex;align-items:baseline;justify-content:center;gap:3px}
 .seg2{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
-.seg2 button{flex:1;padding:8px;font-size:14px}
+.seg2 button{flex:1;min-width:0;padding:8px 4px;font-size:14px}
 .seg2 button.on{background:var(--acc);color:#fff}
 .it{padding:0;overflow:hidden}
 .ith{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer}
 .ith .fg{width:56px;height:34px;flex:none}
 .ith .m{flex:1;min-width:0}
 .ith .n{font-weight:600;font-size:15px}
-.itb{border-top:1px solid var(--line);padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.itb{border-top:1px solid var(--line);padding:12px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
 .itb .full{grid-column:1/-1}
 .itb label{display:block;font-size:12px;color:var(--mute);margin-bottom:4px}
 .chips{display:flex;flex-wrap:wrap;gap:6px;padding-bottom:10px}
@@ -375,13 +375,19 @@ function tone(f, at, d, v){
   const t = AC.currentTime + at; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v||0.6, t+0.01);
   g.gain.exponentialRampToValueAtTime(0.0001, t+d); o.start(t); o.stop(t+d+0.02);
 }
+const VIB = {warn:40, short:80, long:200, triple:[80,80,80,80,80], fin:[200,100,200,100,400]};
 function sound(kind){
-  if(S.settings.vibrate && navigator.vibrate) navigator.vibrate(kind==='warn'?40:kind==='end'?200:[200,100,200,100,400]);
+  if(kind==='end') kind = 'long';
+  if(!kind || kind==='none') return;
+  if(S.settings.vibrate && navigator.vibrate) navigator.vibrate(VIB[kind]);
   if(!S.settings.sound) return;
   if(kind==='warn') tone(880, 0, 0.12);
-  else if(kind==='end') tone(1320, 0, 0.5);
+  else if(kind==='short') tone(1320, 0, 0.15);
+  else if(kind==='long') tone(1320, 0, 0.5);
+  else if(kind==='triple'){ tone(1320,0,.12); tone(1320,.2,.12); tone(1320,.4,.12); }
   else if(kind==='fin'){ tone(660,0,.25); tone(880,.25,.25); tone(1320,.5,.6); }
 }
+const bStart = it => it.bStart || 'none', bEnd = it => it.bEnd || 'long';
 
 /* ---------- icônes de navigation / rendu ---------- */
 const app = document.getElementById('app');
@@ -454,6 +460,7 @@ function vEditor(){
       <div><label>Repos</label>${stepper('rest',it.rest,' s',i)}</div>
       <div><label>Séries</label>${stepper('sets',it.sets,'',i)}</div>
       <div><label>Chaque côté</label><div class="seg2"><button data-act="st" data-i="${i}" data-f="sides" data-v="0" class="${!it.sides?'on':''}">Non</button><button data-act="st" data-i="${i}" data-f="sides" data-v="1" class="${it.sides?'on':''}">Oui</button></div></div>
+      ${[['bStart','Bip de départ',bStart(it)],['bEnd','Bip de fin',bEnd(it)]].map(([f,l,v])=>`<div class="full"><label>${l}</label><div class="seg2">${[['none','Non'],['short','Court'],['long','Long'],['triple','Triple']].map(([k,n])=>`<button data-act="st" data-i="${i}" data-f="${f}" data-v="${k}" class="${v===k?'on':''}">${n}</button>`).join('')}</div></div>`).join('')}
       ${acts}</div>`;
     return `<div class="card it" data-di="${i}"><div class="ith" data-act="open" data-i="${i}"><div class="grip" data-i="${i}" aria-label="Déplacer">${ico('grip')}</div><div class="fg">${figOf(ex).replace('class="fig','class="fig still')}</div>
       <div class="m"><div class="n">${esc(ex.nom)}</div><div class="mute">${summary(it)}</div></div>${ico(open?'up':'down')}</div>${body}</div>`;
@@ -639,6 +646,7 @@ function enterStep(n){
   if(s.dur==null) document.getElementById('rn').textContent = s.reps + '';
   document.getElementById('rn').dataset.k = s.dur==null ? 'reps' : 't';
   if(s.dur==null) document.getElementById('rl').textContent = 'TRAVAIL · RÉPÉTITIONS';
+  if(s.t==='work' && !R.paused) sound(bStart(it));
   tick(true);
 }
 function tick(force){
@@ -648,7 +656,11 @@ function tick(force){
   if(s.dur!=null){
     if(R.paused){ var ms = R.rem; } else { ms = R.endAt - now; }
     const rem = Math.ceil(ms/1000);
-    if(!R.paused && ms<=0){ sound('end'); enterStep(R.i+1); return; }
+    if(!R.paused && ms<=0){
+      const nx = R.steps[R.i+1], startNext = nx && nx.t==='work' && bStart(R.w.items[nx.k])!=='none';
+      if(!startNext) sound(s.t==='work' ? bEnd(R.w.items[s.k]) : 'long');
+      enterStep(R.i+1); return;
+    }
     if(rem!==R.last || force){
       R.last = rem;
       document.getElementById('rn').textContent = rem>=100 ? fmt(rem) : rem;
@@ -721,7 +733,7 @@ document.addEventListener('click', ev=>{
     case 'open': U.open = U.open===i ? null : i; render(); break;
     case 'st': mutate(()=>{
         const w = wById(U.wid), it = w.items[i], f = el.dataset.f;
-        if(f==='mode') it.mode = el.dataset.v; else if(f==='sides') it.sides = el.dataset.v==='1';
+        if(f==='mode') it.mode = el.dataset.v; else if(f==='bStart' || f==='bEnd'){ it[f] = el.dataset.v; audioInit(); sound(it[f]); } else if(f==='sides') it.sides = el.dataset.v==='1';
         else { const d = +el.dataset.d, v = it[f]; const stepv = (f==='work'||f==='rest') && (d<0 ? v<=10 : v<10) ? 1 : (f==='work'||f==='rest' ? 5 : 1); const min = {work:1,rest:0,sets:1,reps:1}[f];
           it[f] = Math.max(min, v + d*stepv); }
       }); break;
