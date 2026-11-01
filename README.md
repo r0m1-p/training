@@ -1,4 +1,4 @@
-# Coach Renfo
+# training
 
 Appli web (PWA) de séances de renforcement avec timers façon Tabata : éditeur de séances et de circuits,
 catalogue d'exercices illustrés, exécuteur plein écran avec bips, export d'une séance en `.html` autonome.
@@ -33,4 +33,4 @@ sauvegarde JSON ni de séance exportée.
 ## Mettre à jour
 
 Un `git push` sur `main` redéploie. Pour forcer les téléphones à prendre la nouvelle version,
-incrémenter `CACHE` dans `sw.js` (`coach-renfo-v1` → `v2`).
+incrémenter `CACHE` dans `sw.js` (par exemple `training-v2` → `training-v3`).

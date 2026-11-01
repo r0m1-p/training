@@ -1,6 +1,6 @@
 {
-  "name": "Coach Renfo",
-  "short_name": "Renfo",
+  "name": "training",
+  "short_name": "training",
   "description": "Séances de renforcement avec timers façon Tabata",
   "start_url": "./index.html",
   "scope": "./",

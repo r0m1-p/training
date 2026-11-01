@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex,nofollow">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<title>Coach Renfo</title>
+<title>training</title>
 <style id="css">
 :root{--bg:#F6F5F1;--card:#fff;--ink:#1d1f1e;--mute:#6b6f6c;--line:#e3e1da;--acc:#0F6E56;--accSoft:#E1F5EE;--accInk:#085041;--danger:#B3261E;--amber:#FAEEDA;--amberInk:#633806;--pause:#6A5FD0;--prep:#B26A00;--r:14px}
 @media (prefers-color-scheme:dark){:root{--bg:#121413;--card:#1b1e1c;--ink:#ecefed;--mute:#9aa19d;--line:#2a2e2c;--acc:#2fb58d;--accSoft:#123a30;--accInk:#8fe0c5;--danger:#f2877f;--amber:#3a2b10;--amberInk:#f0c27a;--pause:#AFA9EC;--prep:#F2B33D}}
@@ -643,7 +643,7 @@ function vEmbed(){
   return `<div class="top"><h1>${esc(w.name)}</h1><button class="ib" data-act="snd" aria-label="Son">${ico(S.settings.sound?'vol':'mute')}</button></div>
     <div class="hero"><h2>${Math.round(totalTime(w)/60)} min · ${w.items.length} exercices</h2><div style="opacity:.9;font-size:14px">Préparation ${w.prep} s · pause ${w.pause} s entre exercices</div></div>
     <div class="tlw"><div class="tlr" id="tlr"></div><div class="list">${items}</div></div>
-    ${APP_URL ? `<a class="btn w" style="margin-top:16px" href="${importLink(w)}">${ico('plus')} Ajouter à mon appli Coach Renfo</a>` : ''}
+    ${APP_URL ? `<a class="btn w" style="margin-top:16px" href="${importLink(w)}">${ico('plus')} Ajouter à mon appli training</a>` : ''}
     ${shareRow(w)}
     <div style="position:sticky;bottom:12px;margin-top:18px"><button class="btn p w" data-act="run" data-id="${w.id}" style="padding:15px;font-size:17px">${ico('play')} Démarrer</button></div>`;
 }
@@ -860,7 +860,7 @@ document.addEventListener('click', ev=>{
         if(navigator.canShare && navigator.canShare({files:[file]})) navigator.share({files:[file], title:w.name}).catch(()=>download(name, html, 'text/html'));
         else download(name, html, 'text/html');
         break; }
-    case 'expall': download('coach-renfo-sauvegarde.json', JSON.stringify({workouts:S.workouts, custom:S.custom}, null, 1), 'application/json'); break;
+    case 'expall': download('training-sauvegarde.json', JSON.stringify({workouts:S.workouts, custom:S.custom}, null, 1), 'application/json'); break;
     case 'imp': document.getElementById('impf').click(); break;
   }
 });
