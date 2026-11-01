@@ -9,8 +9,8 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <title>Coach Renfo</title>
 <style id="css">
-:root{--bg:#F6F5F1;--card:#fff;--ink:#1d1f1e;--mute:#6b6f6c;--line:#e3e1da;--acc:#0F6E56;--accSoft:#E1F5EE;--accInk:#085041;--danger:#B3261E;--amber:#FAEEDA;--amberInk:#633806;--r:14px}
-@media (prefers-color-scheme:dark){:root{--bg:#121413;--card:#1b1e1c;--ink:#ecefed;--mute:#9aa19d;--line:#2a2e2c;--acc:#2fb58d;--accSoft:#123a30;--accInk:#8fe0c5;--danger:#f2877f;--amber:#3a2b10;--amberInk:#f0c27a}}
+:root{--bg:#F6F5F1;--card:#fff;--ink:#1d1f1e;--mute:#6b6f6c;--line:#e3e1da;--acc:#0F6E56;--accSoft:#E1F5EE;--accInk:#085041;--danger:#B3261E;--amber:#FAEEDA;--amberInk:#633806;--pause:#6A5FD0;--r:14px}
+@media (prefers-color-scheme:dark){:root{--bg:#121413;--card:#1b1e1c;--ink:#ecefed;--mute:#9aa19d;--line:#2a2e2c;--acc:#2fb58d;--accSoft:#123a30;--accInk:#8fe0c5;--danger:#f2877f;--amber:#3a2b10;--amberInk:#f0c27a;--pause:#AFA9EC}}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.4}
 button,input,select,textarea{font:inherit;color:inherit}
@@ -108,6 +108,8 @@ a.btn{color:inherit;text-decoration:none}
 .tld{position:absolute;left:34px;width:10px;height:10px;border-radius:50%;background:var(--acc);transform:translateY(-50%);box-shadow:0 0 0 3px var(--bg)}
 .tld.end{background:var(--bg);border:2px solid var(--acc);width:10px;height:10px;box-sizing:border-box}
 .tlt.end{color:var(--acc);font-weight:600}
+.tld.p{background:var(--pause)}
+.tlp{position:absolute;left:18px;width:42px;text-align:center;font-size:10px;line-height:14px;color:var(--pause);background:var(--bg);transform:translateY(-50%);font-variant-numeric:tabular-nums;white-space:nowrap}
 .empty{text-align:center;padding:36px 12px;color:var(--mute)}
 /* runner */
 .run{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;color:#fff;background:#0B7A5E;transition:background .25s;padding:max(10px,env(safe-area-inset-top)) 16px max(10px,env(safe-area-inset-bottom));user-select:none}
@@ -807,11 +809,18 @@ function placeTl(){
   const box = document.getElementById('tlr'); if(!box || U.view!=='editor') return;
   const w = wById(U.wid); if(!w) return;
   const base = box.parentElement.getBoundingClientRect().top, st = startTimes(w);
+  const firstG = {}, pre = {};
+  buildSteps(w).forEach(s=>{
+    if(!(s.k in firstG)) firstG[s.k] = s.g;
+    if(s.g===firstG[s.k] && (s.t==='prep' || s.t==='pause') && w.items[s.k].exoId!=='pause') pre[s.k] = (pre[s.k]||0) + s.dur;
+  });
   let h = '', lastB = null;
   document.querySelectorAll('.tlw [data-di]').forEach(c=>{
     const r = c.getBoundingClientRect(), y = Math.round(r.top - base + 24), t = st[+c.dataset.di];
     if(t==null) return; lastB = r.bottom - base - 4;
-    h += `<div class="tlt" style="top:${y}px">${fmt(t)}</div><div class="tld" style="top:${y}px"></div>`;
+    const k = +c.dataset.di, p = pre[k];
+    if(p && st[k]>p) h += `<div class="tlp" style="top:${Math.round(r.top - base - 5)}px">${p} s</div>`;
+    h += `<div class="tlt" style="top:${y}px">${fmt(t)}</div><div class="tld${w.items[k].exoId==='pause'?' p':''}" style="top:${y}px"></div>`;
   });
   if(lastB!=null) h += `<div class="tlt end" style="top:${Math.round(lastB+18)}px">${fmt(totalTime(w))}</div><div class="tld end" style="top:${Math.round(lastB+18)}px"></div>`;
   box.innerHTML = h;
