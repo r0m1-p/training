@@ -51,7 +51,7 @@ a.btn{color:inherit;text-decoration:none}
 .sum .t{background:var(--accSoft);border-color:transparent;color:var(--accInk)}
 .step{display:flex;align-items:center;gap:4px}
 .step button{width:30px;height:32px;flex:none;border-radius:10px;border:1px solid var(--line);font-size:18px;background:var(--card)}
-.step span{min-width:52px;flex:1;text-align:center;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.step span{min-width:40px;flex:1;text-align:center;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 .stv{width:36px;padding:4px 0;border:0;border-bottom:1.5px dashed var(--line);background:transparent;text-align:right;font-weight:600;font-size:16px;border-radius:0;-moz-appearance:textfield}
 .stv::-webkit-outer-spin-button,.stv::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .stv:focus{outline:none;border-bottom-color:var(--acc)}
@@ -99,6 +99,9 @@ a.btn{color:inherit;text-decoration:none}
 .card.it.dr-a{box-shadow:0 3px 0 var(--acc)}
 .dragging{opacity:.35}
 .ghost{position:fixed;z-index:50;pointer-events:none;background:var(--card);border:1px solid var(--acc);border-radius:10px;padding:8px 12px;font-weight:600;font-size:14px;max-width:70vw;transform:translate(-20px,-50%)}
+.card.it.bloc{border-style:dashed;border-color:var(--pause)}
+.blb{padding:6px;display:flex;flex-direction:column;gap:8px;border-top:1px dashed var(--line)}
+.pill.pz{background:transparent;border:1px solid var(--pause);color:var(--pause)}
 .dz{border:1.5px dashed var(--line);border-radius:12px;padding:14px;text-align:center;color:var(--mute);font-size:13px}
 .dz.hot,.ith.hot{border-color:var(--acc);color:var(--acc);background:var(--accSoft)}
 .tlw{position:relative;padding-left:46px}
@@ -335,8 +338,10 @@ function runs(w){
   });
   return out;
 }
+const blocOf = (w, it) => it.bloc && w.blocs && w.blocs[it.bloc] ? it.bloc : null;
+const blocPre = b => [['pause',b.pauseEx],['prep',b.prep||0]];
 function buildSteps(w){
-  const st = []; let g = 0, first = true, lastP = false;
+  const st = []; let g = 0, first = true, lastP = false, prevTop = null;
   const exo = (k, pre, rd, rds) => {
     g++;
     const it = w.items[k], isP = it.exoId==='pause';
@@ -354,10 +359,16 @@ function buildSteps(w){
   };
   const enter = () => first ? [['prep',w.prep]] : [['pause',w.pause],['prep',w.prepEx]];
   runs(w).forEach(r=>{
-    if(!r.blk){ exo(r.idx[0], enter(), 1, 1); first = false; return; }
+    if(!r.blk){
+      const k = r.idx[0], bl = blocOf(w, w.items[k]);
+      exo(k, prevTop!=null && bl && blocOf(w, w.items[prevTop])===bl ? blocPre(w.blocs[bl]) : enter(), 1, 1);
+      first = false; prevTop = k; return;
+    }
+    prevTop = null;
     const b = w.blocks[r.blk], R = Math.max(1, b.rounds|0);
     for(let rd=1; rd<=R; rd++) r.idx.forEach((k,n)=>{
-      const pre = n===0 ? (rd===1 ? enter() : [['pause',b.pauseRound]]) : [['pause',b.pauseEx]];
+      const bl = blocOf(w, w.items[k]), samebl = n>0 && bl && blocOf(w, w.items[r.idx[n-1]])===bl;
+      const pre = n===0 ? (rd===1 ? enter() : [['pause',b.pauseRound]]) : (samebl ? blocPre(w.blocs[bl]) : [['pause',b.pauseEx]]);
       first = false; exo(k, pre, rd, R);
     });
   });
@@ -466,19 +477,40 @@ function vEditor(){
       <div class="m"><div class="n">${esc(ex.nom)}</div><div class="mute">${summary(it)}</div></div>${ico(open?'up':'down')}</div>${body}</div>`;
   };
   const bstep = (b,f,val,unit) => `<div class="step"><button data-act="bst" data-b="${b}" data-f="${f}" data-d="-1">−</button><span><input class="stv" type="number" inputmode="numeric" min="0" max="999" data-act="bin" data-b="${b}" data-f="${f}" value="${val}" onfocus="this.select()">${unit}</span><button data-act="bst" data-b="${b}" data-f="${f}" data-d="1">+</button></div>`;
+  const blstep = (b,f,val,unit) => `<div class="step"><button data-act="blst" data-bl="${b}" data-f="${f}" data-d="-1">−</button><span><input class="stv" type="number" inputmode="numeric" min="0" max="999" data-act="blin" data-bl="${b}" data-f="${f}" value="${val}" onfocus="this.select()">${unit}</span><button data-act="blst" data-bl="${b}" data-f="${f}" data-d="1">+</button></div>`;
+  const usedBl = new Set(w.items.map(it=>blocOf(w,it)).filter(Boolean));
+  const blocHtml = (id, idxs) => {
+    const b = w.blocs[id], open = U.openBl===id;
+    const head = `<div class="ith" data-act="openbl" data-bl="${id}" data-blh="${id}"><div class="m"><div class="n">${esc(b.name)}</div><div class="mute">${idxs.length} exercices · pause ${b.pauseEx} s${b.prep?' · prépa '+b.prep+' s':''}</div></div><span class="pill pz">Bloc</span>${ico(open?'up':'down')}</div>`;
+    const panel = open ? `<div class="itb"><div class="full"><label>Nom du bloc</label><input class="inp" data-act="blname" data-bl="${id}" value="${esc(b.name)}"></div>
+      <div><label>Pause entre exos</label>${blstep(id,'pauseEx',b.pauseEx,' s')}</div><div><label>Préparation</label>${blstep(id,'prep',b.prep||0,' s')}</div>
+      <div class="full"><button class="btn w d" data-act="delbl" data-bl="${id}">${ico('trash')} Supprimer le bloc</button></div></div>` : '';
+    return `<div class="card it bloc">${head}${panel}<div class="blb">${idxs.length ? idxs.map(i=>card(w.items[i],i)).join('') : `<div class="dz" data-blz="${id}">Glisse des exercices ici</div>`}</div></div>`;
+  };
+  const seq = idxs => { let h = '', i = 0;
+    while(i<idxs.length){ const k = idxs[i], bl = blocOf(w, w.items[k]);
+      if(!bl){ h += card(w.items[k], k); i++; continue; }
+      const grp = []; while(i<idxs.length && blocOf(w, w.items[idxs[i]])===bl){ grp.push(idxs[i]); i++; }
+      h += blocHtml(bl, grp); }
+    return h; };
+  const emptyBlocs = ctx => Object.keys(w.blocs||{}).filter(b=>!usedBl.has(b)).filter(b=>{ const p = w.blocs[b].blk; return (p && w.blocks && w.blocks[p] ? p : null)===ctx; }).map(b=>blocHtml(b,[])).join('');
   const used = new Set(runs(w).filter(r=>r.blk).map(r=>r.blk));
   const empties = Object.keys(w.blocks||{}).filter(b=>!used.has(b)).map(b=>({blk:b, idx:[]}));
-  const items = runs(w).concat(empties).map(r=>{
-    if(!r.blk) return card(w.items[r.idx[0]], r.idx[0]);
+  const circ = r => {
     const b = w.blocks[r.blk], open = U.openB===r.blk;
     const head = `<div class="ith" data-act="openb" data-b="${r.blk}" data-bh="${r.blk}"><div class="m"><div class="n">${esc(b.name)}</div><div class="mute">${r.idx.length} exercices · pause ${b.pauseEx} s · entre tours ${b.pauseRound} s</div></div><span class="pill">× ${b.rounds}</span>${ico(open?'up':'down')}</div>`;
     const panel = open ? `<div class="itb"><div class="full"><label>Nom du circuit</label><input class="inp" data-act="bname" data-b="${r.blk}" value="${esc(b.name)}"></div>
       <div><label>Tours</label>${bstep(r.blk,'rounds',b.rounds,'')}</div><div><label>Pause entre exos</label>${bstep(r.blk,'pauseEx',b.pauseEx,' s')}</div>
       <div><label>Pause entre tours</label>${bstep(r.blk,'pauseRound',b.pauseRound,' s')}</div>
       <div class="full"><button class="btn w" data-act="addblk" data-b="${r.blk}">${ico('plus')} Ajouter un exercice au circuit</button></div>
+      <div class="full"><button class="btn w" data-act="addbloc" data-b="${r.blk}">${ico('plus')} Ajouter un bloc au circuit</button></div>
       <div class="full"><button class="btn w d" data-act="delb" data-b="${r.blk}">${ico('trash')} Supprimer le circuit</button></div></div>` : '';
-    return `<div class="card it" style="border-color:var(--acc)">${head}${panel}<div style="padding:8px;display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line)">${r.idx.length ? r.idx.map(i=>card(w.items[i],i)).join('') : `<div class="dz" data-bz="${r.blk}">Glisse des exercices ici</div>`}</div></div>`;
-  }).join('');
+    const inner = seq(r.idx) + emptyBlocs(r.blk);
+    return `<div class="card it" style="border-color:var(--acc)">${head}${panel}<div style="padding:6px;display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line)">${inner || `<div class="dz" data-bz="${r.blk}">Glisse des exercices ici</div>`}</div></div>`;
+  };
+  let items = '', pend = [];
+  runs(w).forEach(r=>{ if(!r.blk){ pend.push(r.idx[0]); return; } items += seq(pend); pend = []; items += circ(r); });
+  items += seq(pend) + emptyBlocs(null) + empties.map(circ).join('');
   const num = (f,l,min,max,step) => `<div class="field" style="margin:0"><label>${l}</label><input class="inp" type="number" inputmode="numeric" min="${min}" max="${max}" step="${step||1}" data-act="wf" data-f="${f}" value="${w[f]}"></div>`;
   return `<div class="top"><button class="ib" data-act="home" aria-label="Retour">${ico('back')}</button><h1>Séance</h1>
       <button class="ib" data-act="exp" aria-label="Exporter en HTML">${ico('share')}</button>
@@ -487,7 +519,7 @@ function vEditor(){
     <div class="sum"><div><span class="mute">Exercices</span><b>${w.items.length}</b></div><div><span class="mute">Séries</span><b>${runs(w).reduce((a,r)=>a+r.idx.reduce((q,k)=>q+(w.items[k].exoId==='pause'?0:w.items[k].sets*(w.items[k].sides?2:1)),0)*(r.blk?w.blocks[r.blk].rounds:1),0)}</b></div><div class="t"><span>Durée</span><b>${Math.round(totalTime(w)/60)} min</b></div></div>
     <div class="card" style="margin-bottom:14px"><div class="row" style="gap:10px">${num('prep','Préparation (s)',0,60)}${num('prepEx','Prépa entre exos (s)',0,30)}${num('pause','Pause entre exos (s)',0,180,5)}</div></div>
     <div class="tlw"><div class="tlr" id="tlr"></div><div class="list">${items || '<div class="empty">Ajoute des exercices depuis le catalogue.</div>'}
-      <div class="row" style="flex-wrap:wrap"><button class="btn" style="flex:1 1 40%" data-act="addex">${ico('plus')} Exercice</button><button class="btn" style="flex:1 1 40%" data-act="addpause">${ico('plus')} Pause</button><button class="btn" style="flex:1 1 100%" data-act="addcirc">${ico('plus')} Circuit</button></div>
+      <div class="row" style="flex-wrap:wrap"><button class="btn" style="flex:1 1 40%" data-act="addex">${ico('plus')} Exercice</button><button class="btn" style="flex:1 1 40%" data-act="addpause">${ico('plus')} Pause</button><button class="btn" style="flex:1 1 40%" data-act="addbloc">${ico('plus')} Bloc</button><button class="btn" style="flex:1 1 40%" data-act="addcirc">${ico('plus')} Circuit</button></div>
       ${Object.keys(w.blocks||{}).length ? '<div class="dz" data-end="1">Déposer ici pour sortir d\'un circuit</div>' : ''}</div></div>
     ${shareRow(w)}
     <div style="position:sticky;bottom:12px;margin-top:18px"><button class="btn p w" data-act="run" data-id="${w.id}" style="padding:15px;font-size:17px">${ico('play')} Lancer la séance</button></div>`;
@@ -740,13 +772,22 @@ document.addEventListener('click', ev=>{
     case 'mv': mutate(()=>{ const w = wById(U.wid), j = i + (+el.dataset.d); if(j<0||j>=w.items.length) return;
         const a = w.items[i], c = w.items[j];
         if(a.blk!==c.blk){ if(c.blk && w.blocks && w.blocks[c.blk]) a.blk = c.blk; else delete a.blk; }
+        if(a.bloc!==c.bloc){ if(blocOf(w,c)) a.bloc = c.bloc; else delete a.bloc; }
         [w.items[i],w.items[j]] = [c,a]; U.open=j; }); break;
     case 'dupit': mutate(()=>{ const w = wById(U.wid); w.items.splice(i+1, 0, JSON.parse(JSON.stringify(w.items[i]))); U.open = i+1; }); break;
     case 'addpause': mutate(()=>{ const w = wById(U.wid); w.items.push(newItem('pause')); U.open = w.items.length-1; }); break;
     case 'addcirc': mutate(()=>{ const w = wById(U.wid); w.blocks = w.blocks || {}; const b = uid();
         w.blocks[b] = {name:'Circuit '+(Object.keys(w.blocks).length+1), rounds:3, pauseEx:10, pauseRound:60}; U.openB = b; }); break;
     case 'delb': if(confirm('Supprimer ce circuit ? Les exercices sont conservés.')) mutate(()=>{ const w = wById(U.wid), b = el.dataset.b;
-        w.items.forEach(x=>{ if(x.blk===b) delete x.blk; }); delete w.blocks[b]; U.openB = null; }); break;
+        w.items.forEach(x=>{ if(x.blk===b) delete x.blk; }); delete w.blocks[b]; U.openB = null;
+        Object.values(w.blocs||{}).forEach(x=>{ if(x.blk===b) x.blk = null; }); }); break;
+    case 'addbloc': mutate(()=>{ const w = wById(U.wid); w.blocs = w.blocs || {}; const b = uid();
+        w.blocs[b] = {name:'Bloc '+(Object.keys(w.blocs).length+1), pauseEx:10, prep:0, blk:el.dataset.b || null}; U.openBl = b; }); break;
+    case 'openbl': U.openBl = U.openBl===el.dataset.bl ? null : el.dataset.bl; render(); break;
+    case 'blst': mutate(()=>{ const b = wById(U.wid).blocs[el.dataset.bl], f = el.dataset.f, d = +el.dataset.d, v = b[f]||0;
+        b[f] = Math.max(0, v + d*((d<0 ? v<=10 : v<10) ? 1 : 5)); }); break;
+    case 'delbl': if(confirm('Supprimer ce bloc ? Les exercices sont conservés.')) mutate(()=>{ const w = wById(U.wid), b = el.dataset.bl;
+        w.items.forEach(x=>{ if(x.bloc===b) delete x.bloc; }); delete w.blocs[b]; U.openBl = null; }); break;
     case 'openb': U.openB = U.openB===el.dataset.b ? null : el.dataset.b; render(); break;
     case 'bst': mutate(()=>{ const b = wById(U.wid).blocks[el.dataset.b], f = el.dataset.f, d = +el.dataset.d;
         const v = b[f], stepv = f==='rounds' ? 1 : ((d<0 ? v<=10 : v<10) ? 1 : 5); b[f] = Math.max(f==='rounds'?1:0, v + d*stepv); }); break;
@@ -806,6 +847,8 @@ document.addEventListener('change', ev=>{
     const min = (a==='bin' ? {rounds:1} : {work:1,sets:1,reps:1})[f] || 0;
     tgt[f] = Math.max(min, v); save(); render(); return;
   }
+  if(a==='blin'){ const b = wById(U.wid).blocs[el.dataset.bl]; b[el.dataset.f] = Math.min(999, Math.max(0, parseInt(el.value)||0)); save(); render(); return; }
+  if(a==='blname'){ wById(U.wid).blocs[el.dataset.bl].name = el.value || 'Bloc'; save(); return; }
   if(a==='bname'){ wById(U.wid).blocks[el.dataset.b].name = el.value || 'Circuit'; save(); }
   else if(a==='wname'){ wById(U.wid).name = el.value || 'Séance'; save(); }
   else if(a==='wf'){ wById(U.wid)[el.dataset.f] = Math.max(0, parseInt(el.value)||0); save(); render(); }
@@ -843,8 +886,10 @@ window.addEventListener('resize', placeTl);
 let DR = null;
 function dropTarget(x, y){
   const el = document.elementFromPoint(x, y); if(!el) return null;
-  const t = el.closest('[data-di],[data-bh],[data-bz],[data-end]'); if(!t) return null;
+  const t = el.closest('[data-di],[data-bh],[data-bz],[data-blh],[data-blz],[data-end]'); if(!t) return null;
   if(t.dataset.di!=null){ const r = t.getBoundingClientRect(); return {el:t, kind:'item', j:+t.dataset.di, after:y > r.top + r.height/2}; }
+  if(t.dataset.blh) return {el:t, kind:'bhead', bl:t.dataset.blh};
+  if(t.dataset.blz) return {el:t, kind:'bzone', bl:t.dataset.blz};
   if(t.dataset.bh) return {el:t, kind:'head', b:t.dataset.bh};
   if(t.dataset.bz) return {el:t, kind:'zone', b:t.dataset.bz};
   return {el:t, kind:'end'};
@@ -857,13 +902,17 @@ function dragMark(t){
 function dropItem(from, t){
   const w = wById(U.wid), it = w.items[from]; if(!t) return;
   const valid = b => b && w.blocks && w.blocks[b] ? b : undefined;
-  let ref = null, after = false, blk;
-  if(t.kind==='item'){ ref = w.items[t.j]; after = t.after; blk = valid(ref.blk); if(ref===it) return; }
+  let ref = null, after = false, blk, bl;
+  if(t.kind==='item'){ ref = w.items[t.j]; after = t.after; blk = valid(ref.blk); bl = blocOf(w, ref); if(ref===it) return; }
   else if(t.kind==='head'){ ref = w.items.find(x=>x.blk===t.b); blk = valid(t.b); }
   else if(t.kind==='zone'){ blk = valid(t.b); }
+  else if(t.kind==='bhead'){ ref = w.items.find(x=>x.bloc===t.bl); if(ref===it) ref = w.items.find(x=>x!==it && x.bloc===t.bl); blk = ref ? valid(ref.blk) : valid(w.blocs[t.bl].blk); bl = t.bl; }
+  else if(t.kind==='bzone'){ blk = valid(w.blocs[t.bl].blk); bl = t.bl;
+    if(blk){ const last = w.items.filter(x=>x!==it && x.blk===blk).pop(); if(last){ ref = last; after = true; } } }
   w.items.splice(from, 1);
   if(ref){ const k = w.items.indexOf(ref); w.items.splice(k + (after?1:0), 0, it); } else w.items.push(it);
   if(blk) it.blk = blk; else delete it.blk;
+  if(bl) it.bloc = bl; else delete it.bloc;
   U.open = null;
 }
 function dragMove(ev){
