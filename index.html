@@ -166,6 +166,9 @@ a.btn{color:inherit;text-decoration:none}
 <script id="code">
 "use strict";
 const EMB = window.__EMBED__ || null;
+const APP_URL = EMB ? (EMB.app || null) : (location.protocol.startsWith('http') ? location.href.split('#')[0] : null);
+const b64e = str => btoa(unescape(encodeURIComponent(str))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const b64d = str => decodeURIComponent(escape(atob(str.replace(/-/g,'+').replace(/_/g,'/'))));
 
 /* ---------- icônes ---------- */
 const IC = {
@@ -446,7 +449,7 @@ function vHome(){
     <div class="list">${cards || '<div class="empty">Aucune séance. Crée la première.</div>'}
       <button class="btn w" data-act="new">${ico('plus')} Nouvelle séance</button></div>
     <p class="mute" style="margin-top:18px">Tes séances sont enregistrées sur cet appareil. Utilise ${'⤓'} pour les sauvegarder et ${'⤒'} pour les importer sur un autre appareil.</p>
-    <input type="file" id="impf" accept="application/json,.json" hidden>`;
+    <input type="file" id="impf" accept="application/json,.json,text/html,.html,.htm" hidden>`;
 }
 
 /* --- éditeur --- */
@@ -551,6 +554,13 @@ function allExos(){
   const ids = new Set(CATALOG.map(e=>e.id)), ov = id => S.custom.find(e=>e.id===id);
   return S.custom.filter(e=>!ids.has(e.id)).concat(CATALOG.map(e=>ov(e.id)||e)).filter(e=>e.id!=='pause');
 }
+function sharedData(w){ const ex = {}; w.items.forEach(it=>{ const e = exoById(it.exoId); if(e && e.custom) ex[e.id] = e; }); return {w, exos:Object.values(ex)}; }
+const importLink = w => APP_URL ? APP_URL + '#import=' + b64e(JSON.stringify(sharedData(w))) : null;
+function importShared(w, exos){
+  w = JSON.parse(JSON.stringify(w)); w.id = uid();
+  (exos||[]).forEach(c=>{ if(c.custom && !S.custom.some(x=>x.id===c.id)) S.custom.push(c); });
+  S.workouts.push(w); save(); return w;
+}
 function workoutText(w){
   const st = startTimes(w), line = (k,ind) => { const it = w.items[k], ex = exoById(it.exoId) || {nom:'?'};
     return `${ind}${fmt(st[k]||0)}  ${it.exoId==='pause' ? 'Pause · '+it.work+' s' : ex.nom+' · '+summary(it)}`; };
@@ -561,6 +571,7 @@ function workoutText(w){
     r.idx.forEach(k=>out.push(line(k,'  ')));
   });
   out.push('', `Fin à ${fmt(totalTime(w))}`);
+  const link = importLink(w); if(link) out.push('', `Ajouter cette séance à ton appli : ${link}`);
   return out.join('\n');
 }
 function shareRow(w){
@@ -625,13 +636,14 @@ function vEmbed(){
   const w = S.workouts[0];
   const items = w.items.map((it,i)=>{
     const ex = exoById(it.exoId) || {nom:'?',poses:[ST],desc:'',tips:''};
-    return `<div class="card it"><div class="ith" style="cursor:default"><div class="fg" style="width:80px;height:48px;background:var(--accSoft);border-radius:8px">${figOf(ex)}</div>
+    return `<div class="card it" data-di="${i}"><div class="ith" style="cursor:default"><div class="fg" style="width:80px;height:48px;background:var(--accSoft);border-radius:8px">${figOf(ex)}</div>
       <div class="m"><div class="n">${i+1}. ${esc(ex.nom)}</div><div class="mute">${summary(it)}${it.blk&&w.blocks&&w.blocks[it.blk]?` · ${esc(w.blocks[it.blk].name)} × ${w.blocks[it.blk].rounds}`:''}</div></div></div>
       <div class="itb" style="grid-template-columns:1fr;font-size:14px"><div>${esc(ex.desc)}</div><div class="mute">${esc(ex.tips)}</div></div></div>`;
   }).join('');
   return `<div class="top"><h1>${esc(w.name)}</h1><button class="ib" data-act="snd" aria-label="Son">${ico(S.settings.sound?'vol':'mute')}</button></div>
     <div class="hero"><h2>${Math.round(totalTime(w)/60)} min · ${w.items.length} exercices</h2><div style="opacity:.9;font-size:14px">Préparation ${w.prep} s · pause ${w.pause} s entre exercices</div></div>
-    <div class="list">${items}</div>
+    <div class="tlw"><div class="tlr" id="tlr"></div><div class="list">${items}</div></div>
+    ${APP_URL ? `<a class="btn w" style="margin-top:16px" href="${importLink(w)}">${ico('plus')} Ajouter à mon appli Coach Renfo</a>` : ''}
     ${shareRow(w)}
     <div style="position:sticky;bottom:12px;margin-top:18px"><button class="btn p w" data-act="run" data-id="${w.id}" style="padding:15px;font-size:17px">${ico('play')} Démarrer</button></div>`;
 }
@@ -749,7 +761,7 @@ function togglePause(){
 /* ---------- export ---------- */
 function exportHtml(w){
   const used = {}; w.items.forEach(it=>{ const e = exoById(it.exoId); if(e) used[e.id] = e; });
-  const data = JSON.stringify({w, exos:Object.values(used)}).replace(/</g,'\\u003c');
+  const data = JSON.stringify({w, exos:Object.values(used), app:APP_URL}).replace(/</g,'\\u003c');
   const css = document.getElementById('css').textContent, code = document.getElementById('code').textContent;
   return '<!doctype html>\n<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0F6E56"><title>'
     + esc(w.name) + '</title><style id="css">' + css + '</style></head><body><div id="app"></div><script>window.__EMBED__=' + data + '<\/script><script id="code">' + code + '<\/script></body></html>';
@@ -856,7 +868,10 @@ document.addEventListener('change', ev=>{
   const el = ev.target;
   if(el.id==='impf' && el.files[0]){
     const r = new FileReader();
-    r.onload = ()=>{ try{ const d = JSON.parse(r.result); if(!d.workouts) throw 0;
+    r.onload = ()=>{ try{
+      const m = /window\.__EMBED__=([\s\S]*?)<\/script>/.exec(r.result);
+      if(m){ const d = JSON.parse(m[1]); const nw = importShared(d.w, d.exos); render(); toast(`Séance « ${nw.name} » importée`); return; }
+      const d = JSON.parse(r.result); if(!d.workouts) throw 0;
       mutate(()=>{ d.workouts.forEach(w=>{ if(wById(w.id)) w.id = uid(); S.workouts.push(w); }); (d.custom||[]).forEach(c=>{ if(!S.custom.some(x=>x.id===c.id)) S.custom.push(c); }); });
       toast('Séances importées'); }catch(e){ toast('Fichier invalide'); } };
     r.readAsText(el.files[0]); return;
@@ -882,8 +897,8 @@ function startTimes(w){
   return o;
 }
 function placeTl(){
-  const box = document.getElementById('tlr'); if(!box || U.view!=='editor') return;
-  const w = wById(U.wid); if(!w) return;
+  const box = document.getElementById('tlr'); if(!box || (U.view!=='editor' && U.view!=='embed')) return;
+  const w = U.view==='embed' ? S.workouts[0] : wById(U.wid); if(!w) return;
   const base = box.parentElement.getBoundingClientRect().top, st = startTimes(w);
   const firstG = {}, pre = {}, prp = {};
   buildSteps(w).forEach(s=>{
@@ -895,7 +910,9 @@ function placeTl(){
     const r = c.getBoundingClientRect(), y = Math.round(r.top - base + 24), t = st[+c.dataset.di];
     if(t==null) return; lastB = r.bottom - base - 4;
     const k = +c.dataset.di, p = pre[k], q = prp[k];
-    if(p || q) h += `<div class="tlp" style="top:${Math.round(r.top - base - 5)}px">${p ? p+' s' : ''}${p && q ? ' ' : ''}${q ? `<span class="r">${q} s</span>` : ''}</div>`;
+    let a = c;
+    for(let g = a.parentElement && a.parentElement.closest('.card.it'); g && g.querySelector('[data-di]')===c; g = g.parentElement && g.parentElement.closest('.card.it')) a = g;
+    if(p || q) h += `<div class="tlp" style="top:${Math.round(a.getBoundingClientRect().top - base - 5)}px">${p ? p+' s' : ''}${p && q ? ' ' : ''}${q ? `<span class="r">${q} s</span>` : ''}</div>`;
     h += `<div class="tlt" style="top:${y}px">${fmt(t)}</div><div class="tld${w.items[k].exoId==='pause'?' p':''}" style="top:${y}px"></div>`;
   });
   if(lastB!=null) h += `<div class="tlt end" style="top:${Math.round(lastB+18)}px">${fmt(totalTime(w))}</div><div class="tld end" style="top:${Math.round(lastB+18)}px"></div>`;
@@ -985,6 +1002,12 @@ document.addEventListener('pointerup', ()=>dragEnd(true));
 document.addEventListener('pointercancel', ()=>dragEnd(false));
 
 /* ---------- démarrage ---------- */
+if(!EMB && location.hash.startsWith('#import=')){
+  try{ const d = JSON.parse(b64d(location.hash.slice(8)));
+    history.replaceState(null, '', location.pathname + location.search);
+    if(confirm(`Ajouter la séance « ${d.w.name} » à tes séances ?`)){ const nw = importShared(d.w, d.exos); U.view = 'editor'; U.wid = nw.id; }
+  }catch(e){ history.replaceState(null, '', location.pathname + location.search); setTimeout(()=>toast('Lien de séance invalide'), 300); }
+}
 render();
 if(!EMB && 'serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
