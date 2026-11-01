@@ -897,6 +897,8 @@ function dropTarget(x, y){
   const el = document.elementFromPoint(x, y); if(!el) return null;
   const t = el.closest('[data-di],[data-bh],[data-bz],[data-blh],[data-blz],[data-end]'); if(!t) return null;
   if(t.dataset.di!=null){ const r = t.getBoundingClientRect(); return {el:t, kind:'item', j:+t.dataset.di, after:y > r.top + r.height/2}; }
+  if(t.dataset.blh || t.dataset.bh){ const r = t.getBoundingClientRect();
+    if(y < r.top + r.height*0.35){ const card = t.closest('.card.it'); return t.dataset.blh ? {el:card, kind:'before', bl:t.dataset.blh} : {el:card, kind:'before', b:t.dataset.bh}; } }
   if(t.dataset.blh) return {el:t, kind:'bhead', bl:t.dataset.blh};
   if(t.dataset.blz) return {el:t, kind:'bzone', bl:t.dataset.blz};
   if(t.dataset.bh) return {el:t, kind:'head', b:t.dataset.bh};
@@ -906,7 +908,7 @@ function dropTarget(x, y){
 function dragMark(t){
   document.querySelectorAll('.dr-b,.dr-a,.hot').forEach(e=>e.classList.remove('dr-b','dr-a','hot'));
   if(!t) return;
-  if(t.kind==='item') t.el.classList.add(t.after?'dr-a':'dr-b'); else if(t.kind!=='item') t.el.classList.add('hot');
+  if(t.kind==='before') t.el.classList.add('dr-b'); else if(t.kind==='item') t.el.classList.add(t.after?'dr-a':'dr-b'); else if(t.kind!=='item') t.el.classList.add('hot');
 }
 function dropItem(from, t){
   const w = wById(U.wid), it = w.items[from]; if(!t) return;
@@ -915,6 +917,7 @@ function dropItem(from, t){
   if(t.kind==='item'){ ref = w.items[t.j]; after = t.after; blk = valid(ref.blk); bl = blocOf(w, ref); if(ref===it) return; }
   else if(t.kind==='head'){ ref = w.items.find(x=>x.blk===t.b); blk = valid(t.b); }
   else if(t.kind==='zone'){ blk = valid(t.b); }
+  else if(t.kind==='before'){ if(t.bl){ ref = w.items.find(x=>x.bloc===t.bl && x!==it); blk = ref ? valid(ref.blk) : valid(w.blocs[t.bl].blk); } else ref = w.items.find(x=>x.blk===t.b && x!==it); }
   else if(t.kind==='bhead'){ ref = w.items.find(x=>x.bloc===t.bl); if(ref===it) ref = w.items.find(x=>x!==it && x.bloc===t.bl); blk = ref ? valid(ref.blk) : valid(w.blocs[t.bl].blk); bl = t.bl; }
   else if(t.kind==='bzone'){ blk = valid(w.blocs[t.bl].blk); bl = t.bl;
     if(blk){ const last = w.items.filter(x=>x!==it && x.blk===blk).pop(); if(last){ ref = last; after = true; } } }
@@ -932,6 +935,8 @@ function dropGroup(bl, idxs, t){
     const rb = blocOf(w, ref); if(rb){ const g = w.items.filter(x=>x.bloc===rb && x.blk===ref.blk); ref = after ? g[g.length-1] : g[0]; } }
   else if(t.kind==='head'){ ref = w.items.find(x=>x.blk===t.b && !grp.includes(x)); blk = valid(t.b); }
   else if(t.kind==='zone'){ blk = valid(t.b); }
+  else if(t.kind==='before'){ if(t.bl===bl) return;
+    ref = t.bl ? w.items.find(x=>x.bloc===t.bl) : w.items.find(x=>x.blk===t.b && !grp.includes(x)); blk = t.bl && ref ? valid(ref.blk) : undefined; }
   else if(t.kind==='bhead'){ if(t.bl===bl) return; ref = w.items.find(x=>x.bloc===t.bl); blk = ref ? valid(ref.blk) : valid(w.blocs[t.bl].blk); }
   else if(t.kind==='bzone') return;
   w.items = w.items.filter(x=>!grp.includes(x));
