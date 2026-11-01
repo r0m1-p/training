@@ -102,6 +102,11 @@ a.btn{color:inherit;text-decoration:none}
 .card.it.bloc{border-style:dashed;border-color:var(--pause)}
 .blb{padding:6px;display:flex;flex-direction:column;gap:8px;border-top:1px dashed var(--line)}
 .pill.pz{background:transparent;border:1px solid var(--pause);color:var(--pause)}
+.bsig{display:flex;align-items:center;gap:2px;margin-top:4px;height:10px;color:var(--mute);opacity:.85}
+.bsig i{display:inline-block;height:5px;border-radius:2px;background:currentColor}
+.bsig .d{width:4px}.bsig .l{width:12px}.bsig .x{width:10px;height:1.5px;opacity:.5}
+.bsig .c{font-size:9px;font-style:normal;letter-spacing:-.3px;line-height:1}
+.bsig .sp{width:1px;height:8px;background:var(--line);margin:0 4px}
 .dz{border:1.5px dashed var(--line);border-radius:12px;padding:14px;text-align:center;color:var(--mute);font-size:13px}
 .dz.hot,.ith.hot{border-color:var(--acc);color:var(--acc);background:var(--accSoft)}
 .tlw{position:relative;padding-left:46px}
@@ -449,6 +454,12 @@ function stepper(field, val, unit, i){
   return `<div class="step"><button data-act="st" data-i="${i}" data-f="${field}" data-d="-1">−</button><span><input class="stv" type="number" inputmode="numeric" min="0" max="999" data-act="stin" data-i="${i}" data-f="${field}" value="${val}" onfocus="this.select()">${unit}</span><button data-act="st" data-i="${i}" data-f="${field}" data-d="1">+</button></div>`;
 }
 const dfmt = t => { t = Math.round(t); return t<60 ? `${t} s` : `${Math.floor(t/60)} min${t%60 ? ' '+String(t%60).padStart(2,'0')+' s' : ''}`; };
+const BNAME = {none:'aucun', short:'court', long:'long', triple:'triple'};
+const bglyph = k => k==='short' ? '<i class="d"></i>' : k==='long' ? '<i class="l"></i>' : k==='triple' ? '<i class="d"></i><i class="d"></i><i class="d"></i>' : '<i class="x"></i>';
+function bsig(it){
+  const c = it.bCount!==false, t = `Bip de départ : ${BNAME[bStart(it)]} · compte à rebours : ${c?'oui':'non'} · bip de fin : ${BNAME[bEnd(it)]}`;
+  return `<div class="bsig" title="${t}" aria-label="${t}">${bglyph(bStart(it))}<span class="sp"></span>${c ? '<em class="c">3·2·1</em>' : '<i class="x"></i>'}<span class="sp"></span>${bglyph(bEnd(it))}</div>`;
+}
 function summary(it){
   if(it.exoId==='pause') return `${it.work} s`;
   const a = it.mode==='time' ? `${it.work} s` : `${it.reps} reps`;
@@ -477,7 +488,7 @@ function vEditor(){
       ${[['bStart','Bip de départ',bStart(it)],['bEnd','Bip de fin',bEnd(it)]].map(([f,l,v])=>`<div class="full"><label>${l}</label><div class="seg2">${[['none','Non'],['short','Court'],['long','Long'],['triple','Triple']].map(([k,n])=>`<button data-act="st" data-i="${i}" data-f="${f}" data-v="${k}" class="${v===k?'on':''}">${n}</button>`).join('')}</div></div>`).join('')}
       ${acts}</div>`;
     return `<div class="card it" data-di="${i}"><div class="ith" data-act="open" data-i="${i}"><div class="grip" data-i="${i}" aria-label="Déplacer">${ico('grip')}</div><div class="fg">${figOf(ex).replace('class="fig','class="fig still')}</div>
-      <div class="m"><div class="n">${esc(ex.nom)}</div><div class="mute">${summary(it)}</div></div>${ico(open?'up':'down')}</div>${body}</div>`;
+      <div class="m"><div class="n">${esc(ex.nom)}</div><div class="mute">${summary(it)}</div>${isP ? '' : bsig(it)}</div>${ico(open?'up':'down')}</div>${body}</div>`;
   };
   const bstep = (b,f,val,unit) => `<div class="step"><button data-act="bst" data-b="${b}" data-f="${f}" data-d="-1">−</button><span><input class="stv" type="number" inputmode="numeric" min="0" max="999" data-act="bin" data-b="${b}" data-f="${f}" value="${val}" onfocus="this.select()">${unit}</span><button data-act="bst" data-b="${b}" data-f="${f}" data-d="1">+</button></div>`;
   const blstep = (b,f,val,unit) => `<div class="step"><button data-act="blst" data-bl="${b}" data-f="${f}" data-d="-1">−</button><span><input class="stv" type="number" inputmode="numeric" min="0" max="999" data-act="blin" data-bl="${b}" data-f="${f}" value="${val}" onfocus="this.select()">${unit}</span><button data-act="blst" data-bl="${b}" data-f="${f}" data-d="1">+</button></div>`;
