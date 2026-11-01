@@ -472,6 +472,7 @@ function vEditor(){
       <div><label>Repos</label>${stepper('rest',it.rest,' s',i)}</div>
       <div><label>Séries</label>${stepper('sets',it.sets,'',i)}</div>
       <div><label>Chaque côté</label><div class="seg2"><button data-act="st" data-i="${i}" data-f="sides" data-v="0" class="${!it.sides?'on':''}">Non</button><button data-act="st" data-i="${i}" data-f="sides" data-v="1" class="${it.sides?'on':''}">Oui</button></div></div>
+      <div class="full"><label>Compte à rebours (3 dernières secondes)</label><div class="seg2"><button data-act="st" data-i="${i}" data-f="bCount" data-v="0" class="${it.bCount===false?'on':''}">Non</button><button data-act="st" data-i="${i}" data-f="bCount" data-v="1" class="${it.bCount!==false?'on':''}">Oui</button></div></div>
       ${[['bStart','Bip de départ',bStart(it)],['bEnd','Bip de fin',bEnd(it)]].map(([f,l,v])=>`<div class="full"><label>${l}</label><div class="seg2">${[['none','Non'],['short','Court'],['long','Long'],['triple','Triple']].map(([k,n])=>`<button data-act="st" data-i="${i}" data-f="${f}" data-v="${k}" class="${v===k?'on':''}">${n}</button>`).join('')}</div></div>`).join('')}
       ${acts}</div>`;
     return `<div class="card it" data-di="${i}"><div class="ith" data-act="open" data-i="${i}"><div class="grip" data-i="${i}" aria-label="Déplacer">${ico('grip')}</div><div class="fg">${figOf(ex).replace('class="fig','class="fig still')}</div>
@@ -704,7 +705,7 @@ function tick(force){
     if(rem!==R.last || force){
       R.last = rem;
       document.getElementById('rn').textContent = rem>=100 ? fmt(rem) : rem;
-      if(!R.paused && rem<=3 && rem>=1 && s.dur>3 && !R.warned[rem]){ R.warned[rem]=1; sound('warn'); }
+      if(!R.paused && rem<=3 && rem>=1 && s.dur>3 && !R.warned[rem] && (s.t!=='work' || R.w.items[s.k].bCount!==false)){ R.warned[rem]=1; sound('warn'); }
     }
     frac = 1 - Math.max(0,ms)/(s.dur*1000); elapsed = s.dur*frac;
   } else {
@@ -773,7 +774,7 @@ document.addEventListener('click', ev=>{
     case 'open': U.open = U.open===i ? null : i; render(); break;
     case 'st': mutate(()=>{
         const w = wById(U.wid), it = w.items[i], f = el.dataset.f;
-        if(f==='mode') it.mode = el.dataset.v; else if(f==='bStart' || f==='bEnd'){ it[f] = el.dataset.v; audioInit(); sound(it[f]); } else if(f==='sides') it.sides = el.dataset.v==='1';
+        if(f==='mode') it.mode = el.dataset.v; else if(f==='bCount'){ it.bCount = el.dataset.v==='1'; if(it.bCount){ audioInit(); sound('warn'); } } else if(f==='bStart' || f==='bEnd'){ it[f] = el.dataset.v; audioInit(); sound(it[f]); } else if(f==='sides') it.sides = el.dataset.v==='1';
         else { const d = +el.dataset.d, v = it[f]; const stepv = (f==='work'||f==='rest') && (d<0 ? v<=10 : v<10) ? 1 : (f==='work'||f==='rest' ? 5 : 1); const min = {work:1,rest:0,sets:1,reps:1}[f];
           it[f] = Math.max(min, v + d*stepv); }
       }); break;
