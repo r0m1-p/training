@@ -99,7 +99,12 @@ a.btn{color:inherit;text-decoration:none}
 .card.it.dr-a{box-shadow:0 3px 0 var(--acc)}
 .dragging{opacity:.35}
 .ghost{position:fixed;z-index:50;pointer-events:none;background:var(--card);border:1px solid var(--acc);border-radius:10px;padding:8px 12px;font-weight:600;font-size:14px;max-width:70vw;transform:translate(-20px,-50%)}
-.card.it.bloc{border-style:dashed;border-color:var(--pause)}
+.card.it.grp{border-color:var(--acc)}
+.card.it.grp.d2{border-style:dashed}
+.gb{padding:6px;display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line)}
+.gdl{margin:4px 0 3px}
+.gdur{display:inline-block;font-weight:700;font-size:15px;color:var(--accInk);background:var(--accSoft);border-radius:99px;padding:4px 10px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.ith .n .pill{vertical-align:2px}
 .blb{padding:6px;display:flex;flex-direction:column;gap:8px;border-top:1px dashed var(--line)}
 .pill.pz{background:transparent;border:1px solid var(--pause);color:var(--pause)}
 .bsig{display:flex;align-items:center;gap:2px;margin-top:4px;height:10px;color:var(--mute);opacity:.85}
@@ -329,8 +334,8 @@ function seed(){
   return {workouts:[w], custom:[], settings:{sound:true, vibrate:true}};
 }
 function load(){
-  if(EMB) return {workouts:[EMB.w], custom:EMB.exos, settings:{sound:true, vibrate:true}};
-  try{ const d = JSON.parse(localStorage.getItem(LS)); if(d && d.workouts) return d; }catch(e){}
+  if(EMB) return {workouts:[migrate(EMB.w)], custom:EMB.exos, settings:{sound:true, vibrate:true}};
+  try{ const d = JSON.parse(localStorage.getItem(LS)); if(d && d.workouts){ d.workouts.forEach(migrate); return d; } }catch(e){}
   return seed();
 }
 let S = null;
@@ -346,50 +351,82 @@ const figOf = ex => figure(ex && ex.poses && ex.poses.length ? ex.poses : [ST]);
 
 /* ---------- construction des étapes ---------- */
 const REP_SEC = 3;
-function runs(w){
-  const out = [];
-  w.items.forEach((it,i)=>{
-    const b = it.blk && w.blocks && w.blocks[it.blk] ? it.blk : null, last = out[out.length-1];
-    if(b && last && last.blk===b) last.idx.push(i); else out.push({blk:b, idx:[i]});
+/* ---------- blocs : groupes imbriqués (bloc, sous-bloc) ---------- */
+const MAXD = 2;
+const grp = (w, id) => id && w.groups && w.groups[id] ? w.groups[id] : null;
+function pathOf(w, gid){ const p = []; while(grp(w, gid) && p.length<MAXD && !p.includes(gid)){ p.unshift(gid); gid = w.groups[gid].parent; } return p; }
+const itemPath = (w, it) => pathOf(w, it.g);
+const gParent = (w, id) => { const p = pathOf(w, id); return p.length>1 ? p[p.length-2] : null; };
+const inGroup = (w, it, id) => itemPath(w, it).includes(id);
+function migrate(w){
+  if(!w || !w.items) return w;
+  if(!w.blocks && !w.blocs && !w.items.some(it=>it.blk || it.bloc)){ w.groups = w.groups || {}; return w; }
+  const C = w.blocks || {}, B = w.blocs || {}, par = {};
+  w.groups = w.groups || {};
+  Object.entries(C).forEach(([id,c])=>{ w.groups[id] = {name:c.name||'Bloc', rounds:Math.max(1,c.rounds|0), pauseEx:c.pauseEx||0, prep:0, pauseRound:c.pauseRound!=null?c.pauseRound:60, parent:null}; });
+  const mkB = (id, b, parent) => { if(!w.groups[id]) w.groups[id] = {name:b.name||'Bloc', rounds:1, pauseEx:b.pauseEx||0, prep:b.prep||0, pauseRound:60, parent}; };
+  w.items.forEach(it=>{
+    const c = it.blk && C[it.blk] ? it.blk : null, b = it.bloc && B[it.bloc] ? it.bloc : null;
+    if(b){ let id = b; if(par[b]===undefined) par[b] = c; else if(par[b]!==c) id = b+'_'+(c||'x'); mkB(id, B[b], c); it.g = id; }
+    else if(c) it.g = c;
+    delete it.blk; delete it.bloc;
   });
-  return out;
+  Object.entries(B).forEach(([id,b])=>mkB(id, b, b.blk && C[b.blk] ? b.blk : null));
+  delete w.blocks; delete w.blocs; return w;
 }
-const blocOf = (w, it) => it.bloc && w.blocs && w.blocs[it.bloc] ? it.bloc : null;
-const blocPre = b => [['pause',b.pauseEx],['prep',b.prep||0]];
+function tree(w){
+  const root = [], stack = [{id:null, kids:root}];
+  w.items.forEach((it,k)=>{
+    const p = itemPath(w, it); let d = 0;
+    while(d < stack.length-1 && d < p.length && stack[d+1].id===p[d]) d++;
+    stack.length = d+1;
+    for(let j=d; j<p.length; j++){ const n = {id:p[j], kids:[]}; stack[stack.length-1].kids.push(n); stack.push(n); }
+    stack[stack.length-1].kids.push({k});
+  });
+  return root;
+}
 function buildSteps(w){
-  const st = []; let g = 0, first = true, lastP = false, prevTop = null;
-  const exo = (k, pre, rd, rds) => {
+  const st = []; let g = 0, lastP = false;
+  const exo = (k, pre, tours) => {
     g++;
     const it = w.items[k], isP = it.exoId==='pause';
     if(isP){ if(st.length) pre = []; } else if(lastP) pre = pre.filter(p=>p[0]!=='pause');
     lastP = isP;
-    pre.forEach(([t,d])=>{ if(d>0) st.push({t, dur:d, k, g, rd, rds}); });
-    if(isP){ if(it.work>0) st.push({t:'pause', dur:it.work, k, g, rd, rds}); return; }
+    const t = tours[tours.length-1], base = {k, g, rd:t?t.rd:1, rds:t?t.rds:1, tours};
+    pre.forEach(([ty,d])=>{ if(d>0) st.push({...base, t:ty, dur:d}); });
+    if(isP){ if(it.work>0) st.push({...base, t:'pause', dur:it.work, pi:true}); return; }
     const sides = it.sides ? ['Gauche','Droite'] : [null];
     const total = it.sets * sides.length; let n = 0;
     for(let s=1; s<=it.sets; s++) for(const side of sides){
       n++;
-      st.push({t:'work', k, g, rd, rds, dur: it.mode==='time' ? it.work : null, reps: it.reps, set:s, sets:it.sets, side});
-      if(n<total && it.rest>0) st.push({t:'rest', k, g, rd, rds, dur:it.rest});
+      st.push({...base, t:'work', dur: it.mode==='time' ? it.work : null, reps: it.reps, set:s, sets:it.sets, side});
+      if(n<total && it.rest>0) st.push({...base, t:'rest', dur:it.rest});
     }
   };
-  const enter = () => first ? [['prep',w.prep]] : [['pause',w.pause],['prep',w.prepEx]];
-  runs(w).forEach(r=>{
-    if(!r.blk){
-      const k = r.idx[0], bl = blocOf(w, w.items[k]);
-      exo(k, prevTop!=null && bl && blocOf(w, w.items[prevTop])===bl ? blocPre(w.blocs[bl]) : enter(), 1, 1);
-      first = false; prevTop = k; return;
+  const walk = (nodes, between, entry, tours) => nodes.forEach((n,i)=>{
+    const pre = i===0 ? entry : between;
+    if(n.k!=null){ exo(n.k, pre, tours); return; }
+    const G = w.groups[n.id], R = Math.max(1, G.rounds|0), inner = [['pause',G.pauseEx||0],['prep',G.prep||0]];
+    n.s0 = st.length;
+    for(let rd=1; rd<=R; rd++){
+      walk(n.kids, inner, rd===1 ? pre : [['pause',G.pauseRound||0]], R>1 ? tours.concat({rd, rds:R}) : tours);
+      if(rd===1) n.r1 = st.length;
     }
-    prevTop = null;
-    const b = w.blocks[r.blk], R = Math.max(1, b.rounds|0);
-    for(let rd=1; rd<=R; rd++) r.idx.forEach((k,n)=>{
-      const bl = blocOf(w, w.items[k]), samebl = n>0 && bl && blocOf(w, w.items[r.idx[n-1]])===bl;
-      const pre = n===0 ? (rd===1 ? enter() : [['pause',b.pauseRound]]) : (samebl ? blocPre(w.blocs[bl]) : [['pause',b.pauseEx]]);
-      first = false; exo(k, pre, rd, R);
-    });
+    n.s1 = st.length;
   });
+  const T = tree(w);
+  walk(T, [['pause',w.pause],['prep',w.prepEx]], [['prep',w.prep]], []);
   st.forEach(s=>{ s.est = s.dur!=null ? s.dur : s.reps*REP_SEC; });
+  st.tree = T;
   return st;
+}
+/* durée d'un bloc (sans la pause d'entrée) : total et un tour */
+function groupDur(st, n){
+  let a = n.s0; while(a < n.s1 && (st[a].t==='prep' || st[a].t==='pause') && !st[a].pi) a++;
+  let tot = 0, r1 = 0, approx = false;
+  for(let j=a; j<n.s1; j++){ tot += st[j].est; if(j < n.r1) r1 += st[j].est; if(st[j].dur==null) approx = true; }
+  const f = x => (approx ? '≈ ' : '') + dfmt(x);
+  return {tot:f(tot), r1:f(r1)};
 }
 const totalTime = w => buildSteps(w).reduce((a,s)=>a+s.est, 0);
 
@@ -509,58 +546,38 @@ function vEditor(){
     return `<div class="card it" data-di="${i}"><div class="ith" data-act="open" data-i="${i}"><div class="grip" data-i="${i}" aria-label="Déplacer">${ico('grip')}</div><div class="fg">${figOf(ex).replace('class="fig','class="fig still')}</div>
       <div class="m"><div class="n">${esc(ex.nom)}</div><div class="mute">${summary(it)}</div>${isP ? '' : bsig(it)}</div>${ico(open?'up':'down')}</div>${body}</div>`;
   };
-  const bstep = (b,f,val,unit) => `<div class="step"><button data-act="bst" data-b="${b}" data-f="${f}" data-d="-1">−</button><span><input class="stv" type="number" inputmode="numeric" min="0" max="999" data-act="bin" data-b="${b}" data-f="${f}" value="${val}" onfocus="this.select()">${unit}</span><button data-act="bst" data-b="${b}" data-f="${f}" data-d="1">+</button></div>`;
-  const blstep = (b,f,val,unit) => `<div class="step"><button data-act="blst" data-bl="${b}" data-f="${f}" data-d="-1">−</button><span><input class="stv" type="number" inputmode="numeric" min="0" max="999" data-act="blin" data-bl="${b}" data-f="${f}" value="${val}" onfocus="this.select()">${unit}</span><button data-act="blst" data-bl="${b}" data-f="${f}" data-d="1">+</button></div>`;
-  const usedBl = new Set(w.items.map(it=>blocOf(w,it)).filter(Boolean));
-  const ST = buildSteps(w);
-  const blocDur = idxs => { const set = new Set(idxs), k0 = idxs[0]; let g0 = null, sum = 0, approx = false;
-    ST.forEach(s=>{ if(!set.has(s.k) || (s.rd||1)!==1) return;
-      if(s.k===k0 && g0===null) g0 = s.g;
-      if(s.k===k0 && s.g===g0 && (s.t==='pause' || s.t==='prep') && w.items[k0].exoId!=='pause') return;
-      if(s.dur==null) approx = true; sum += s.est; });
-    return (approx ? '≈ ' : '') + dfmt(sum); };
-  const blocHtml = (id, idxs) => {
-    const b = w.blocs[id], open = U.openBl===id;
-    const head = `<div class="ith" data-act="openbl" data-bl="${id}" data-blh="${id}">${idxs.length ? `<div class="grip" data-blg="${id}" aria-label="Déplacer le bloc">${ico('grip')}</div>` : ''}<div class="m"><div class="n">${esc(b.name)}</div><div class="mute">${idxs.length ? blocDur(idxs)+' · ' : ''}${idxs.length} exercices · pause ${b.pauseEx} s${b.prep?' · prépa '+b.prep+' s':''}</div></div><span class="pill pz">Bloc</span>${ico(open?'up':'down')}</div>`;
-    const panel = open ? `<div class="itb"><div class="full"><label>Nom du bloc</label><input class="inp" data-act="blname" data-bl="${id}" value="${esc(b.name)}"></div>
-      <div><label>Pause entre exos</label>${blstep(id,'pauseEx',b.pauseEx,' s')}</div><div><label>Préparation</label>${blstep(id,'prep',b.prep||0,' s')}</div>
-      <div class="full"><button class="btn w d" data-act="delbl" data-bl="${id}">${ico('trash')} Supprimer le bloc</button></div></div>` : '';
-    return `<div class="card it bloc">${head}${panel}<div class="blb">${idxs.length ? idxs.map(i=>card(w.items[i],i)).join('') : `<div class="dz" data-blz="${id}">Glisse des exercices ici</div>`}</div></div>`;
+  const gstep = (g,f,val,unit) => `<div class="step"><button data-act="gst" data-g="${g}" data-f="${f}" data-d="-1">−</button><span><input class="stv" type="number" inputmode="numeric" min="0" max="999" data-act="gin" data-g="${g}" data-f="${f}" value="${val}" onfocus="this.select()">${unit}</span><button data-act="gst" data-g="${g}" data-f="${f}" data-d="1">+</button></div>`;
+  const ST = buildSteps(w), T = ST.tree, present = new Set();
+  const mark = ns => ns.forEach(n=>{ if(n.id){ present.add(n.id); mark(n.kids); } }); mark(T);
+  const empties = pid => Object.keys(w.groups||{}).filter(id=>!present.has(id) && gParent(w, id)===pid && pathOf(w, id).length);
+  const leaves = n => n.kids.reduce((a,c)=>a + (c.k!=null ? (w.items[c.k].exoId==='pause'?0:1) : leaves(c)), 0);
+  const nodesHtml = (ns, depth) => ns.map(n=> n.k!=null ? card(w.items[n.k], n.k) : grpHtml(n.id, n, depth)).join('');
+  const grpHtml = (id, n, depth) => {
+    const G = w.groups[id], open = U.openG===id, R = Math.max(1, G.rounds|0), d = n ? groupDur(ST, n) : null;
+    const nl = n ? leaves(n) : 0;
+    const info = [n ? `${nl} exo${nl>1?'s':''}` : 'vide', `pause ${G.pauseEx||0} s`, G.prep ? `prépa ${G.prep} s` : ''].filter(Boolean).join(' · ')
+      + (R>1 ? `<br>${d ? d.r1+' / tour · ' : ''}entre tours ${G.pauseRound||0} s` : '');
+    const head = `<div class="ith" data-act="openg" data-g="${id}" data-gh="${id}">${n ? `<div class="grip" data-gg="${id}" aria-label="Déplacer le bloc">${ico('grip')}</div>` : ''}<div class="m"><div class="n">${esc(G.name)}${R>1 ? ` <span class="pill">× ${R}</span>` : ''}</div>${d ? `<div class="gdl"><span class="gdur">${d.tot}</span></div>` : ''}<div class="mute">${info}</div></div>${ico(open?'up':'down')}</div>`;
+    const panel = open ? `<div class="itb"><div class="full"><label>Nom du bloc</label><input class="inp" data-act="gname" data-g="${id}" value="${esc(G.name)}"></div>
+      <div><label>Répétitions</label>${gstep(id,'rounds',R,'')}</div><div><label>Pause entre éléments</label>${gstep(id,'pauseEx',G.pauseEx||0,' s')}</div>
+      <div><label>Préparation</label>${gstep(id,'prep',G.prep||0,' s')}</div>${R>1 ? `<div><label>Pause entre tours</label>${gstep(id,'pauseRound',G.pauseRound||0,' s')}</div>` : '<div></div>'}
+      <div class="full"><button class="btn w" data-act="addgex" data-g="${id}">${ico('plus')} Ajouter un exercice au bloc</button></div>
+      ${depth<MAXD ? `<div class="full"><button class="btn w" data-act="addgrp" data-p="${id}">${ico('plus')} Ajouter un sous-bloc</button></div>` : ''}
+      <div class="full row" style="gap:8px"><button class="btn" style="flex:1" data-act="dupg" data-g="${id}">${ico('copy')} Dupliquer</button><button class="btn d" style="flex:1" data-act="delg" data-g="${id}">${ico('trash')} Supprimer</button></div></div>` : '';
+    const inner = (n ? nodesHtml(n.kids, depth+1) : '') + empties(id).map(e=>grpHtml(e, null, depth+1)).join('');
+    return `<div class="card it grp d${depth}">${head}${panel}<div class="gb">${inner || `<div class="dz" data-gz="${id}">Glisse des exercices ici</div>`}</div></div>`;
   };
-  const seq = idxs => { let h = '', i = 0;
-    while(i<idxs.length){ const k = idxs[i], bl = blocOf(w, w.items[k]);
-      if(!bl){ h += card(w.items[k], k); i++; continue; }
-      const grp = []; while(i<idxs.length && blocOf(w, w.items[idxs[i]])===bl){ grp.push(idxs[i]); i++; }
-      h += blocHtml(bl, grp); }
-    return h; };
-  const emptyBlocs = ctx => Object.keys(w.blocs||{}).filter(b=>!usedBl.has(b)).filter(b=>{ const p = w.blocs[b].blk; return (p && w.blocks && w.blocks[p] ? p : null)===ctx; }).map(b=>blocHtml(b,[])).join('');
-  const used = new Set(runs(w).filter(r=>r.blk).map(r=>r.blk));
-  const empties = Object.keys(w.blocks||{}).filter(b=>!used.has(b)).map(b=>({blk:b, idx:[]}));
-  const circ = r => {
-    const b = w.blocks[r.blk], open = U.openB===r.blk;
-    const head = `<div class="ith" data-act="openb" data-b="${r.blk}" data-bh="${r.blk}"><div class="m"><div class="n">${esc(b.name)}</div><div class="mute">${r.idx.length} exercices · pause ${b.pauseEx} s · entre tours ${b.pauseRound} s</div></div><span class="pill">× ${b.rounds}</span>${ico(open?'up':'down')}</div>`;
-    const panel = open ? `<div class="itb"><div class="full"><label>Nom du circuit</label><input class="inp" data-act="bname" data-b="${r.blk}" value="${esc(b.name)}"></div>
-      <div><label>Tours</label>${bstep(r.blk,'rounds',b.rounds,'')}</div><div><label>Pause entre exos</label>${bstep(r.blk,'pauseEx',b.pauseEx,' s')}</div>
-      <div><label>Pause entre tours</label>${bstep(r.blk,'pauseRound',b.pauseRound,' s')}</div>
-      <div class="full"><button class="btn w" data-act="addblk" data-b="${r.blk}">${ico('plus')} Ajouter un exercice au circuit</button></div>
-      <div class="full"><button class="btn w" data-act="addbloc" data-b="${r.blk}">${ico('plus')} Ajouter un bloc au circuit</button></div>
-      <div class="full"><button class="btn w d" data-act="delb" data-b="${r.blk}">${ico('trash')} Supprimer le circuit</button></div></div>` : '';
-    const inner = seq(r.idx) + emptyBlocs(r.blk);
-    return `<div class="card it" style="border-color:var(--acc)">${head}${panel}<div style="padding:6px;display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line)">${inner || `<div class="dz" data-bz="${r.blk}">Glisse des exercices ici</div>`}</div></div>`;
-  };
-  let items = '', pend = [];
-  runs(w).forEach(r=>{ if(!r.blk){ pend.push(r.idx[0]); return; } items += seq(pend); pend = []; items += circ(r); });
-  items += seq(pend) + emptyBlocs(null) + empties.map(circ).join('');
+  const items = nodesHtml(T, 1) + empties(null).map(id=>grpHtml(id, null, 1)).join('');
   const num = (f,l,min,max,step) => `<div class="field" style="margin:0"><label>${l}</label><input class="inp" type="number" inputmode="numeric" min="${min}" max="${max}" step="${step||1}" data-act="wf" data-f="${f}" value="${w[f]}"></div>`;
   return `<div class="top"><button class="ib" data-act="home" aria-label="Retour">${ico('back')}</button><h1>Séance</h1>
       <button class="ib" data-act="exp" aria-label="Exporter en HTML">${ico('share')}</button>
       <button class="ib" data-act="delw" aria-label="Supprimer" style="color:var(--danger)">${ico('trash')}</button></div>
     <div class="field"><label>Nom de la séance</label><input class="inp" data-act="wname" value="${esc(w.name)}"></div>
-    <div class="sum"><div><span class="mute">Exercices</span><b>${w.items.length}</b></div><div><span class="mute">Séries</span><b>${runs(w).reduce((a,r)=>a+r.idx.reduce((q,k)=>q+(w.items[k].exoId==='pause'?0:w.items[k].sets*(w.items[k].sides?2:1)),0)*(r.blk?w.blocks[r.blk].rounds:1),0)}</b></div><div class="t"><span>Durée</span><b>${Math.round(totalTime(w)/60)} min</b></div></div>
+    <div class="sum"><div><span class="mute">Exercices</span><b>${w.items.length}</b></div><div><span class="mute">Séries</span><b>${ST.filter(x=>x.t==='work').length}</b></div><div class="t"><span>Durée</span><b>${Math.round(totalTime(w)/60)} min</b></div></div>
     <div class="card" style="margin-bottom:14px"><div class="row" style="gap:10px">${num('prep','Préparation (s)',0,60)}${num('prepEx','Prépa entre exos (s)',0,30)}${num('pause','Pause entre exos (s)',0,180,5)}</div></div>
     <div class="tlw"><div class="tlr" id="tlr"></div><div class="list">${items || '<div class="empty">Ajoute des exercices depuis le catalogue.</div>'}
-      <div class="row" style="flex-wrap:wrap"><button class="btn" style="flex:1 1 40%" data-act="addex">${ico('plus')} Exercice</button><button class="btn" style="flex:1 1 40%" data-act="addpause">${ico('plus')} Pause</button><button class="btn" style="flex:1 1 40%" data-act="addbloc">${ico('plus')} Bloc</button><button class="btn" style="flex:1 1 40%" data-act="addcirc">${ico('plus')} Circuit</button></div>
-      ${Object.keys(w.blocks||{}).length ? '<div class="dz" data-end="1">Déposer ici pour sortir d\'un circuit</div>' : ''}</div></div>
+      <div class="row" style="flex-wrap:wrap"><button class="btn" style="flex:1 1 40%" data-act="addex">${ico('plus')} Exercice</button><button class="btn" style="flex:1 1 40%" data-act="addpause">${ico('plus')} Pause</button><button class="btn" style="flex:1 1 100%" data-act="addgrp">${ico('plus')} Bloc</button></div>
+      ${Object.keys(w.groups||{}).length ? '<div class="dz" data-end="1">Déposer ici pour sortir d\'un bloc</div>' : ''}</div></div>
     ${shareRow(w)}
     <div style="position:sticky;bottom:12px;margin-top:18px"><button class="btn p w" data-act="run" data-id="${w.id}" style="padding:15px;font-size:17px">${ico('play')} Lancer la séance</button></div>`;
 }
@@ -598,7 +615,7 @@ async function refreshShare(){
     a.href = k==='mail' ? `mailto:?subject=${encodeURIComponent(w.name)}&body=${t}` : k==='wa' ? `https://wa.me/?text=${t}` : k==='sms' ? `sms:?&body=${t}` : (link || '#'); });
 }
 function importShared(w, exos){
-  w = JSON.parse(JSON.stringify(w)); w.id = uid();
+  w = migrate(JSON.parse(JSON.stringify(w))); w.id = uid();
   (exos||[]).forEach(c=>{ if(c.custom && !S.custom.some(x=>x.id===c.id)) S.custom.push(c); });
   S.workouts.push(w); save(); return w;
 }
@@ -609,11 +626,13 @@ function workoutText(w, link){
   const out = [`${w.name} · ${Math.round(totalTime(w)/60)} min · ${w.items.length} exercices`];
   if(link) out.push(`👉 Ajouter à ton appli : ${link}`);
   out.push('');
-  runs(w).forEach(r=>{
-    if(!r.blk){ out.push(line(r.idx[0],'')); return; }
-    const b = w.blocks[r.blk]; out.push(`${b.name} × ${b.rounds} tours (pause ${b.pauseEx} s, entre tours ${b.pauseRound} s)`);
-    r.idx.forEach(k=>out.push(line(k,'  ')));
+  const walkT = (ns, ind) => ns.forEach(n=>{
+    if(n.k!=null){ out.push(line(n.k, ind)); return; }
+    const G = w.groups[n.id], R = Math.max(1, G.rounds|0);
+    out.push(`${ind}${G.name}${R>1 ? ' × '+R : ''} (pause ${G.pauseEx||0} s${R>1 ? ', entre tours '+(G.pauseRound||0)+' s' : ''})`);
+    walkT(n.kids, ind+'  ');
   });
+  walkT(buildSteps(w).tree, '');
   out.push('', `Fin à ${fmt(totalTime(w))}`);
   return out.join('\n');
 }
@@ -680,7 +699,7 @@ function vEmbed(){
   const items = w.items.map((it,i)=>{
     const ex = exoById(it.exoId) || {nom:'?',poses:[ST],desc:'',tips:''};
     return `<div class="card it" data-di="${i}"><div class="ith" style="cursor:default"><div class="fg" style="width:80px;height:48px;background:var(--accSoft);border-radius:8px">${figOf(ex)}</div>
-      <div class="m"><div class="n">${i+1}. ${esc(ex.nom)}</div><div class="mute">${summary(it)}${it.blk&&w.blocks&&w.blocks[it.blk]?` · ${esc(w.blocks[it.blk].name)} × ${w.blocks[it.blk].rounds}`:''}</div></div></div>
+      <div class="m"><div class="n">${i+1}. ${esc(ex.nom)}</div><div class="mute">${summary(it)}${itemPath(w,it).length ? ' · ' + itemPath(w,it).map(g=>esc(w.groups[g].name) + (w.groups[g].rounds>1 ? ' × '+w.groups[g].rounds : '')).join(' › ') : ''}</div></div></div>
       <div class="itb" style="grid-template-columns:1fr;font-size:14px"><div>${esc(ex.desc)}</div><div class="mute">${esc(ex.tips)}</div></div></div>`;
   }).join('');
   return `<div class="top"><h1>${esc(w.name)}</h1><button class="ib" data-act="snd" aria-label="Son">${ico(S.settings.sound?'vol':'mute')}</button></div>
@@ -747,7 +766,7 @@ function enterStep(n){
   const run = document.getElementById('run');
   run.dataset.t = s.t;
   document.getElementById('rl').textContent = LABEL[s.t];
-  document.getElementById('rtitle').textContent = `Exercice ${s.k+1} / ${R.w.items.length}` + (s.rds>1 ? ` · tour ${s.rd} / ${s.rds}` : '');
+  document.getElementById('rtitle').textContent = `Exercice ${s.k+1} / ${R.w.items.length}` + (s.tours && s.tours.length ? ' · tour ' + s.tours.map(t=>t.rd+'/'+t.rds).join(' · ') : '');
   const nwi = s.t==='work' ? n : nextWork(n), nw = R.steps[nwi], exM = nw ? (exoById(R.w.items[nw.k].exoId) || {nom:'?',poses:[ST]}) : ex;
   document.getElementById('rname').textContent = nw ? exM.nom : 'Fin de la séance';
   document.getElementById('rsub').textContent = s.t==='work' ? workDetail(s) : (nw ? 'À suivre · ' + workDetail(nw) : '');
@@ -831,8 +850,8 @@ document.addEventListener('click', ev=>{
   const i = +el.dataset.i, id = el.dataset.id;
   switch(a){
     case 'nav': U.view = el.dataset.v; U.pick=null; U.filter='all'; render(); break;
-    case 'home': U.view='home'; U.wid=null; U.open=null; U.addBlk=null; render(); break;
-    case 'edit': U.view='editor'; U.wid=id; U.pick=null; U.open=null; U.addBlk=null; render(); break;
+    case 'home': U.view='home'; U.wid=null; U.open=null; U.addG=null; render(); break;
+    case 'edit': U.view='editor'; U.wid=id; U.pick=null; U.open=null; U.addG=null; render(); break;
     case 'new': { const w = {id:uid(), name:'Nouvelle séance', prep:10, pause:30, prepEx:5, items:[]}; mutate(()=>{ S.workouts.push(w); U.view='editor'; U.wid=w.id; U.open=null; }); break; }
     case 'dup': mutate(()=>{ const w = JSON.parse(JSON.stringify(wById(id))); w.id=uid(); w.name+=' (copie)'; S.workouts.push(w); }); break;
     case 'delw': if(confirm('Supprimer cette séance ?')) mutate(()=>{ S.workouts = S.workouts.filter(w=>w.id!==U.wid); U.view='home'; U.wid=null; }); break;
@@ -851,44 +870,38 @@ document.addEventListener('click', ev=>{
           it[f] = Math.max(min, v + d*stepv); }
       }); break;
     case 'mv': mutate(()=>{ const w = wById(U.wid), j = i + (+el.dataset.d); if(j<0||j>=w.items.length) return;
-        const a = w.items[i], c = w.items[j];
-        if(a.blk!==c.blk){ if(c.blk && w.blocks && w.blocks[c.blk]) a.blk = c.blk; else delete a.blk; }
-        if(a.bloc!==c.bloc){ if(blocOf(w,c)) a.bloc = c.bloc; else delete a.bloc; }
+        const a = w.items[i], c = w.items[j]; if(c.g) a.g = c.g; else delete a.g;
         [w.items[i],w.items[j]] = [c,a]; U.open=j; }); break;
     case 'dupit': mutate(()=>{ const w = wById(U.wid); w.items.splice(i+1, 0, JSON.parse(JSON.stringify(w.items[i]))); U.open = i+1; }); break;
     case 'addpause': mutate(()=>{ const w = wById(U.wid); w.items.push(newItem('pause')); U.open = w.items.length-1; }); break;
-    case 'addcirc': mutate(()=>{ const w = wById(U.wid); w.blocks = w.blocks || {}; const b = uid();
-        w.blocks[b] = {name:'Circuit '+(Object.keys(w.blocks).length+1), rounds:3, pauseEx:10, pauseRound:60}; U.openB = b; }); break;
-    case 'delb': if(confirm('Supprimer ce circuit ? Les exercices sont conservés.')) mutate(()=>{ const w = wById(U.wid), b = el.dataset.b;
-        w.items.forEach(x=>{ if(x.blk===b) delete x.blk; }); delete w.blocks[b]; U.openB = null;
-        Object.values(w.blocs||{}).forEach(x=>{ if(x.blk===b) x.blk = null; }); }); break;
-    case 'addbloc': mutate(()=>{ const w = wById(U.wid); w.blocs = w.blocs || {}; const b = uid();
-        w.blocs[b] = {name:'Bloc '+(Object.keys(w.blocs).length+1), pauseEx:10, prep:0, blk:el.dataset.b || null}; U.openBl = b; }); break;
-    case 'openbl': U.openBl = U.openBl===el.dataset.bl ? null : el.dataset.bl; render(); break;
-    case 'blst': mutate(()=>{ const b = wById(U.wid).blocs[el.dataset.bl], f = el.dataset.f, d = +el.dataset.d, v = b[f]||0;
-        b[f] = Math.max(0, v + d*((d<0 ? v<=10 : v<10) ? 1 : 5)); }); break;
-    case 'delbl': if(confirm('Supprimer ce bloc ? Les exercices sont conservés.')) mutate(()=>{ const w = wById(U.wid), b = el.dataset.bl;
-        w.items.forEach(x=>{ if(x.bloc===b) delete x.bloc; }); delete w.blocs[b]; U.openBl = null; }); break;
-    case 'openb': U.openB = U.openB===el.dataset.b ? null : el.dataset.b; render(); break;
-    case 'bst': mutate(()=>{ const b = wById(U.wid).blocks[el.dataset.b], f = el.dataset.f, d = +el.dataset.d;
-        const v = b[f], stepv = f==='rounds' ? 1 : ((d<0 ? v<=10 : v<10) ? 1 : 5); b[f] = Math.max(f==='rounds'?1:0, v + d*stepv); }); break;
-    case 'grp': mutate(()=>{ const w = wById(U.wid), it = w.items[i], p = w.items[i-1]; if(!p) return;
-        w.blocks = w.blocks || {};
-        if(!(p.blk && w.blocks[p.blk])){ const b = uid(); w.blocks[b] = {name:'Circuit', rounds:3, pauseEx:10, pauseRound:60}; p.blk = b; U.openB = b; }
-        it.blk = p.blk; }); break;
-    case 'ungrp': mutate(()=>{ const w = wById(U.wid), it = w.items[i], b = it.blk, p = w.items[i-1], n = w.items[i+1];
-        if(p && n && p.blk===b && n.blk===b && w.blocks[b]){ const nb = uid(); w.blocks[nb] = Object.assign({}, w.blocks[b]);
-          for(let k=i+1; k<w.items.length && w.items[k].blk===b; k++) w.items[k].blk = nb; }
-        delete it.blk; }); break;
-    case 'addblk': U.addBlk = el.dataset.b; U.view='catalogue'; U.pick=U.wid; U.filter='all'; render(); break;
+    case 'addgrp': mutate(()=>{ const w = wById(U.wid), p = el.dataset.p || null, id = uid(); w.groups = w.groups || {};
+        const n = Object.values(w.groups).filter(x=>(x.parent||null)===p).length + 1;
+        w.groups[id] = {name:(p ? 'Sous-bloc ' : 'Bloc ')+n, rounds:1, pauseEx:10, prep:0, pauseRound:60, parent:p}; U.openG = id; }); break;
+    case 'openg': U.openG = U.openG===el.dataset.g ? null : el.dataset.g; render(); break;
+    case 'gst': mutate(()=>{ const G = wById(U.wid).groups[el.dataset.g], f = el.dataset.f, d = +el.dataset.d, v = G[f]||0;
+        G[f] = f==='rounds' ? Math.max(1, v + d) : Math.max(0, v + d*((d<0 ? v<=10 : v<10) ? 1 : 5)); }); break;
+    case 'addgex': U.addG = el.dataset.g; U.view='catalogue'; U.pick=U.wid; U.filter='all'; render(); break;
+    case 'dupg': mutate(()=>{ const w = wById(U.wid), id = el.dataset.g, map = {};
+        const copyG = gid => { const nid = uid(); map[gid] = nid; w.groups[nid] = {...w.groups[gid], parent: gid===id ? w.groups[gid].parent : map[w.groups[gid].parent]};
+          if(gid===id) w.groups[nid].name += ' (copie)'; Object.keys(w.groups).filter(x=>w.groups[x].parent===gid && !map[x] && !Object.values(map).includes(x)).forEach(copyG); };
+        copyG(id);
+        const src = w.items.filter(x=>inGroup(w, x, id)); if(!src.length) return;
+        const last = w.items.lastIndexOf(src[src.length-1]);
+        w.items.splice(last+1, 0, ...src.map(x=>{ const c = JSON.parse(JSON.stringify(x)); c.g = map[x.g] || c.g; return c; })); }); break;
+    case 'delg': if(confirm('Supprimer ce bloc ? Les exercices sont conservés.')) mutate(()=>{ const w = wById(U.wid), id = el.dataset.g, p = w.groups[id].parent || null;
+        w.items.forEach(x=>{ if(x.g===id){ if(p) x.g = p; else delete x.g; } });
+        Object.values(w.groups).forEach(x=>{ if(x.parent===id) x.parent = p; });
+        delete w.groups[id]; U.openG = null; }); break;
     case 'rm': mutate(()=>{ wById(U.wid).items.splice(i,1); U.open=null; }); break;
-    case 'addex': U.addBlk=null; U.view='catalogue'; U.pick=U.wid; U.filter='all'; render(); break;
+    case 'addex': U.addG=null; U.view='catalogue'; U.pick=U.wid; U.filter='all'; render(); break;
     case 'flt': U.filter = el.dataset.v; render(); break;
     case 'exo': U.sheet = {type:'exo', id}; render(); break;
     case 'closesheet': U.sheet = null; render(); break;
     case 'addto': { const wid = el.dataset.w || document.getElementById('addsel').value;
         mutate(()=>{ const w = wById(wid), it = newItem(id);
-          if(U.addBlk && w.blocks && w.blocks[U.addBlk]){ let last = -1; w.items.forEach((x,k)=>{ if(x.blk===U.addBlk) last = k; }); it.blk = U.addBlk; w.items.splice(last+1, 0, it); }
+          if(U.addG && grp(w, U.addG)){ it.g = U.addG; let last = -1, gid = U.addG;
+            while(last<0 && gid){ w.items.forEach((x,k)=>{ if(inGroup(w, x, gid)) last = k; }); gid = gParent(w, gid); }
+            if(last<0) w.items.push(it); else w.items.splice(last+1, 0, it); }
           else w.items.push(it); U.sheet=null; }); toast('Ajouté à la séance'); break; }
     case 'newexo': U.sheet = {type:'form'}; render(); break;
     case 'editexo': U.sheet = {type:'form', id}; render(); break;
@@ -920,20 +933,17 @@ document.addEventListener('change', ev=>{
       const m = /window\.__EMBED__=([\s\S]*?)<\/script>/.exec(r.result);
       if(m){ const d = JSON.parse(m[1]); const nw = importShared(d.w, d.exos); render(); toast(`Séance « ${nw.name} » importée`); return; }
       const d = JSON.parse(r.result); if(!d.workouts) throw 0;
-      mutate(()=>{ d.workouts.forEach(w=>{ if(wById(w.id)) w.id = uid(); S.workouts.push(w); }); (d.custom||[]).forEach(c=>{ if(!S.custom.some(x=>x.id===c.id)) S.custom.push(c); }); });
+      mutate(()=>{ d.workouts.forEach(w=>{ migrate(w); if(wById(w.id)) w.id = uid(); S.workouts.push(w); }); (d.custom||[]).forEach(c=>{ if(!S.custom.some(x=>x.id===c.id)) S.custom.push(c); }); });
       toast('Séances importées'); }catch(e){ toast('Fichier invalide'); } };
     r.readAsText(el.files[0]); return;
   }
   const a = el.dataset.act;
-  if(a==='stin' || a==='bin'){
+  if(a==='stin'){
     const w = wById(U.wid), f = el.dataset.f, v = Math.min(999, Math.max(0, parseInt(el.value)||0));
-    const tgt = a==='stin' ? w.items[+el.dataset.i] : w.blocks[el.dataset.b];
-    const min = (a==='bin' ? {rounds:1} : {work:1,sets:1,reps:1})[f] || 0;
-    tgt[f] = Math.max(min, v); save(); render(); return;
+    w.items[+el.dataset.i][f] = Math.max({work:1,sets:1,reps:1}[f] || 0, v); save(); render(); return;
   }
-  if(a==='blin'){ const b = wById(U.wid).blocs[el.dataset.bl]; b[el.dataset.f] = Math.min(999, Math.max(0, parseInt(el.value)||0)); save(); render(); return; }
-  if(a==='blname'){ wById(U.wid).blocs[el.dataset.bl].name = el.value || 'Bloc'; save(); return; }
-  if(a==='bname'){ wById(U.wid).blocks[el.dataset.b].name = el.value || 'Circuit'; save(); }
+  if(a==='gin'){ const G = wById(U.wid).groups[el.dataset.g], f = el.dataset.f, v = Math.min(999, Math.max(0, parseInt(el.value)||0)); G[f] = f==='rounds' ? Math.max(1, v) : v; save(); render(); return; }
+  if(a==='gname'){ wById(U.wid).groups[el.dataset.g].name = el.value || 'Bloc'; save(); }
   else if(a==='wname'){ wById(U.wid).name = el.value || 'Séance'; save(); }
   else if(a==='wf'){ wById(U.wid)[el.dataset.f] = Math.max(0, parseInt(el.value)||0); save(); render(); }
 });
@@ -972,54 +982,39 @@ window.addEventListener('resize', placeTl);
 let DR = null;
 function dropTarget(x, y){
   const el = document.elementFromPoint(x, y); if(!el) return null;
-  const t = el.closest('[data-di],[data-bh],[data-bz],[data-blh],[data-blz],[data-end]'); if(!t) return null;
+  const t = el.closest('[data-di],[data-gh],[data-gz],[data-end]'); if(!t) return null;
   if(t.dataset.di!=null){ const r = t.getBoundingClientRect(); return {el:t, kind:'item', j:+t.dataset.di, after:y > r.top + r.height/2}; }
-  if(t.dataset.blh || t.dataset.bh){ const r = t.getBoundingClientRect();
-    if(y < r.top + r.height*0.35){ const card = t.closest('.card.it'); return t.dataset.blh ? {el:card, kind:'before', bl:t.dataset.blh} : {el:card, kind:'before', b:t.dataset.bh}; } }
-  if(t.dataset.blh) return {el:t, kind:'bhead', bl:t.dataset.blh};
-  if(t.dataset.blz) return {el:t, kind:'bzone', bl:t.dataset.blz};
-  if(t.dataset.bh) return {el:t, kind:'head', b:t.dataset.bh};
-  if(t.dataset.bz) return {el:t, kind:'zone', b:t.dataset.bz};
+  if(t.dataset.gh){ const r = t.getBoundingClientRect();
+    return y < r.top + r.height*0.35 ? {el:t.closest('.card.it'), kind:'before', g:t.dataset.gh} : {el:t, kind:'ghead', g:t.dataset.gh}; }
+  if(t.dataset.gz) return {el:t, kind:'gzone', g:t.dataset.gz};
   return {el:t, kind:'end'};
 }
 function dragMark(t){
   document.querySelectorAll('.dr-b,.dr-a,.hot').forEach(e=>e.classList.remove('dr-b','dr-a','hot'));
   if(!t) return;
-  if(t.kind==='before') t.el.classList.add('dr-b'); else if(t.kind==='item') t.el.classList.add(t.after?'dr-a':'dr-b'); else if(t.kind!=='item') t.el.classList.add('hot');
+  if(t.kind==='before') t.el.classList.add('dr-b'); else if(t.kind==='item') t.el.classList.add(t.after?'dr-a':'dr-b'); else t.el.classList.add('hot');
 }
-function dropItem(from, t){
-  const w = wById(U.wid), it = w.items[from]; if(!t) return;
-  const valid = b => b && w.blocks && w.blocks[b] ? b : undefined;
-  let ref = null, after = false, blk, bl;
-  if(t.kind==='item'){ ref = w.items[t.j]; after = t.after; blk = valid(ref.blk); bl = blocOf(w, ref); if(ref===it) return; }
-  else if(t.kind==='head'){ ref = w.items.find(x=>x.blk===t.b); blk = valid(t.b); }
-  else if(t.kind==='zone'){ blk = valid(t.b); }
-  else if(t.kind==='before'){ if(t.bl){ ref = w.items.find(x=>x.bloc===t.bl && x!==it); blk = ref ? valid(ref.blk) : valid(w.blocs[t.bl].blk); } else ref = w.items.find(x=>x.blk===t.b && x!==it); }
-  else if(t.kind==='bhead'){ ref = w.items.find(x=>x.bloc===t.bl); if(ref===it) ref = w.items.find(x=>x!==it && x.bloc===t.bl); blk = ref ? valid(ref.blk) : valid(w.blocs[t.bl].blk); bl = t.bl; }
-  else if(t.kind==='bzone'){ blk = valid(w.blocs[t.bl].blk); bl = t.bl;
-    if(blk){ const last = w.items.filter(x=>x!==it && x.blk===blk).pop(); if(last){ ref = last; after = true; } } }
-  w.items.splice(from, 1);
-  if(ref){ const k = w.items.indexOf(ref); w.items.splice(k + (after?1:0), 0, it); } else w.items.push(it);
-  if(blk) it.blk = blk; else delete it.blk;
-  if(bl) it.bloc = bl; else delete it.bloc;
+/* déplace des exercices (un seul, ou tous ceux d'un bloc) vers la cible */
+function dropMove(t, moving, gid){
+  const w = wById(U.wid); if(!t || !moving.length) return;
+  const h = gid ? (Object.values(w.groups).some(x=>x.parent===gid) || moving.some(x=>x.g!==gid) ? 2 : 1) : 0;
+  const firstIn = c => w.items.find(x=>!moving.includes(x) && inGroup(w, x, c)), lastIn = c => w.items.filter(x=>!moving.includes(x) && inGroup(w, x, c)).pop();
+  let ref = null, after = false, cont = null;
+  if(t.kind==='item'){ ref = w.items[t.j]; if(moving.includes(ref)) return; after = t.after; cont = ref.g && grp(w, ref.g) ? ref.g : null; }
+  else if(t.kind==='before'){ cont = gParent(w, t.g); ref = firstIn(t.g) || null; }
+  else if(t.kind==='ghead'){ cont = t.g; ref = firstIn(t.g) || null; }
+  else if(t.kind==='gzone'){ cont = t.g; }
+  if(gid && cont && pathOf(w, cont).includes(gid)) return;
+  while(cont && pathOf(w, cont).length + h > MAXD){
+    const up = cont; cont = gParent(w, up); const r = after || t.kind==='ghead' || t.kind==='gzone' ? lastIn(up) : firstIn(up);
+    if(r){ ref = r; after = after || t.kind==='ghead' || t.kind==='gzone'; }
+  }
+  if(!ref && cont){ let c = cont; while(c && !ref){ ref = lastIn(c) || null; c = gParent(w, c); } after = !!ref; }
+  w.items = w.items.filter(x=>!moving.includes(x));
+  if(ref){ const k = w.items.indexOf(ref); w.items.splice(k + (after?1:0), 0, ...moving); } else w.items.push(...moving);
+  if(gid) w.groups[gid].parent = cont;
+  else { if(cont) moving[0].g = cont; else delete moving[0].g; }
   U.open = null;
-}
-function dropGroup(bl, idxs, t){
-  const w = wById(U.wid), grp = idxs.map(i=>w.items[i]); if(!t || !grp.length) return;
-  const valid = b => b && w.blocks && w.blocks[b] ? b : undefined;
-  let ref = null, after = false, blk;
-  if(t.kind==='item'){ ref = w.items[t.j]; if(grp.includes(ref)) return; after = t.after; blk = valid(ref.blk);
-    const rb = blocOf(w, ref); if(rb){ const g = w.items.filter(x=>x.bloc===rb && x.blk===ref.blk); ref = after ? g[g.length-1] : g[0]; } }
-  else if(t.kind==='head'){ ref = w.items.find(x=>x.blk===t.b && !grp.includes(x)); blk = valid(t.b); }
-  else if(t.kind==='zone'){ blk = valid(t.b); }
-  else if(t.kind==='before'){ if(t.bl===bl) return;
-    ref = t.bl ? w.items.find(x=>x.bloc===t.bl) : w.items.find(x=>x.blk===t.b && !grp.includes(x)); blk = t.bl && ref ? valid(ref.blk) : undefined; }
-  else if(t.kind==='bhead'){ if(t.bl===bl) return; ref = w.items.find(x=>x.bloc===t.bl); blk = ref ? valid(ref.blk) : valid(w.blocs[t.bl].blk); }
-  else if(t.kind==='bzone') return;
-  w.items = w.items.filter(x=>!grp.includes(x));
-  if(ref){ const k = w.items.indexOf(ref); w.items.splice(k + (after?1:0), 0, ...grp); } else w.items.push(...grp);
-  grp.forEach(x=>{ if(blk) x.blk = blk; else delete x.blk; });
-  w.blocs[bl].blk = blk || null; U.open = null;
 }
 function dragMove(ev){
   if(!DR) return;
@@ -1031,14 +1026,14 @@ function dragEnd(commit){
   if(!DR) return; const d = DR; DR = null;
   clearInterval(d.timer); d.gh.remove(); d.card.classList.remove('dragging');
   document.querySelectorAll('.dr-b,.dr-a,.hot').forEach(e=>e.classList.remove('dr-b','dr-a','hot'));
-  if(commit && d.t){ mutate(()=> d.bl ? dropGroup(d.bl, d.idxs, d.t) : dropItem(d.i, d.t)); }
+  if(commit && d.t){ mutate(()=>{ const w = wById(U.wid); dropMove(d.t, d.gid ? d.idxs.map(i=>w.items[i]) : [w.items[d.i]], d.gid); }); }
 }
 document.addEventListener('pointerdown', ev=>{
   const g = ev.target.closest('.grip'); if(!g || U.view!=='editor') return;
   ev.preventDefault();
   const w = wById(U.wid), card = g.closest('.card.it'), gh = document.createElement('div'); gh.className = 'ghost';
-  if(g.dataset.blg){ const bl = g.dataset.blg; gh.textContent = w.blocs[bl].name;
-    DR = {bl, idxs:[...card.querySelectorAll('[data-di]')].map(e=>+e.dataset.di), gh, t:null, sp:0, card}; }
+  if(g.dataset.gg){ const gid = g.dataset.gg; gh.textContent = w.groups[gid].name;
+    DR = {gid, idxs:[...card.querySelectorAll('[data-di]')].map(e=>+e.dataset.di), gh, t:null, sp:0, card}; }
   else { const i = +g.dataset.i; gh.textContent = (exoById(w.items[i].exoId) || {nom:'?'}).nom; DR = {i, gh, t:null, sp:0, card}; }
   document.body.appendChild(gh); DR.card.classList.add('dragging');
   try{ g.setPointerCapture(ev.pointerId); }catch(e){}
