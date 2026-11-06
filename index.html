@@ -121,12 +121,13 @@ a.btn{color:inherit;text-decoration:none}
 .tlp{position:absolute;left:10px;width:58px;text-align:center;font-size:10px;line-height:14px;color:var(--pause);background:var(--bg);transform:translateY(-50%);font-variant-numeric:tabular-nums;white-space:nowrap}
 .empty{text-align:center;padding:36px 12px;color:var(--mute)}
 /* runner */
-.run{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;color:#fff;background:#0B7A5E;transition:background .25s;padding:max(10px,env(safe-area-inset-top)) 16px max(10px,env(safe-area-inset-bottom));user-select:none}
-.run[data-t=prep]{background:#9A5A08}
-.run[data-t=work]{background:#0B7A5E}
-.run[data-t=rest]{background:#1F5FA8}
-.run[data-t=pause]{background:#5B4BB7}
-.run[data-t=done]{background:#0B7A5E}
+.run{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;color:#fff;background:#0B7A5E;padding:max(10px,env(safe-area-inset-top)) 16px max(10px,env(safe-area-inset-bottom));user-select:none}
+.run{--ph:#0B7A5E;background:var(--ph)!important}
+.run[data-t=prep]{--ph:#9A5A08}
+.run[data-t=work]{--ph:#C0362C}
+.run[data-t=rest]{--ph:#1F5FA8}
+.run[data-t=pause]{--ph:#5B4BB7}
+.run[data-t=done]{--ph:#0B7A5E}
 .run button{color:#fff}
 .rtop{display:flex;align-items:center;gap:8px;min-height:44px}
 .rtop .rtitle{flex:1;text-align:center;font-size:14px;opacity:.9}
@@ -138,8 +139,14 @@ a.btn{color:inherit;text-decoration:none}
 .rsub{text-align:center;opacity:.85;font-size:14px;min-height:20px}
 .rfig{height:min(17vh,130px);margin:6px auto;width:min(60vw,240px);color:#fff}
 .rfig .fig{color:#fff}
-.rnext{background:rgba(255,255,255,.15);border-radius:12px;padding:9px 12px;font-size:14px;text-align:center;margin:4px 0 8px}
-.rdone{background:#fff!important;color:#0B7A5E!important;border-radius:14px;padding:14px;font-size:20px;font-weight:700;margin:0 0 8px}
+.rnext{background:rgba(0,0,0,.2);border-radius:14px;padding:10px 12px;margin:6px 0 8px}
+.nx{display:flex;align-items:center;gap:12px}
+.nf{width:76px;height:48px;flex:none}.nf .fig{color:#fff}
+.nm{min-width:0}
+.nl{font-size:11px;letter-spacing:.14em;text-transform:uppercase;opacity:.75}
+.nn{font-size:18px;font-weight:700;line-height:1.2}
+.nd{font-size:13px;opacity:.85}
+.rdone{background:#fff!important;color:var(--ph)!important;border-radius:14px;padding:14px;font-size:20px;font-weight:700;margin:0 0 8px}
 .tl{display:flex;gap:0;height:14px;margin-top:2px}
 .tl i{display:block;position:relative;background:rgba(255,255,255,.28);overflow:hidden;cursor:pointer;border-left:1px solid rgba(0,0,0,.18)}
 .tl i.first{margin-left:5px;border-left:0;border-radius:3px 0 0 3px}
@@ -150,7 +157,7 @@ a.btn{color:inherit;text-decoration:none}
 .tl i.past b{width:100%}
 .rtimes{display:flex;justify-content:space-between;font-size:13px;opacity:.85;margin:4px 0 0;font-variant-numeric:tabular-nums}
 .rctl{display:flex;justify-content:center;align-items:center;gap:30px;padding:10px 0 4px}
-.rctl .pp{width:68px;height:68px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;color:#0B7A5E!important}
+.rctl .pp{width:68px;height:68px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;color:var(--ph)!important}
 .rctl .pp svg{width:32px;height:32px}
 .rctl .sk svg{width:28px;height:28px}
 .fin{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center}
@@ -389,25 +396,34 @@ const totalTime = w => buildSteps(w).reduce((a,s)=>a+s.est, 0);
 /* ---------- audio ---------- */
 let AC = null;
 function audioInit(){ try{ AC = AC || new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==='suspended') AC.resume(); }catch(e){} }
-function tone(f, at, d, v){
+function tone(f, at, d, v, type, f2){
   if(!AC) return; const o = AC.createOscillator(), g = AC.createGain();
-  o.type = 'sine'; o.frequency.value = f; o.connect(g); g.connect(AC.destination);
+  o.type = type || 'sine'; o.connect(g); g.connect(AC.destination);
+  o.frequency.setValueAtTime(f, AC.currentTime + at); if(f2) o.frequency.exponentialRampToValueAtTime(f2, AC.currentTime + at + d);
   const t = AC.currentTime + at; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v||0.6, t+0.01);
   g.gain.exponentialRampToValueAtTime(0.0001, t+d); o.start(t); o.stop(t+d+0.02);
 }
-const VIB = {warn:40, short:80, long:200, triple:[80,80,80,80,80], fin:[200,100,200,100,400]};
-function sound(kind){
+/* départ = notes qui montent (sinus), fin = notes qui descendent (triangle), compte à rebours = tic grave */
+const VIB = {warn:30, start:{short:60, long:[60,40,140], triple:[60,60,60,60,60]}, end:{short:150, long:350, triple:[150,80,150,80,150]}, fin:[200,100,200,100,400]};
+function sound(kind, role){
   if(kind==='end') kind = 'long';
   if(!kind || kind==='none') return;
-  if(S.settings.vibrate && navigator.vibrate) navigator.vibrate(VIB[kind]);
+  role = role || 'end';
+  if(S.settings.vibrate && navigator.vibrate) navigator.vibrate(kind==='warn' || kind==='fin' ? VIB[kind] : VIB[role][kind]);
   if(!S.settings.sound) return;
-  if(kind==='warn') tone(880, 0, 0.12);
-  else if(kind==='short') tone(1320, 0, 0.15);
-  else if(kind==='long') tone(1320, 0, 0.5);
-  else if(kind==='triple'){ tone(1320,0,.12); tone(1320,.2,.12); tone(1320,.4,.12); }
+  if(kind==='warn') tone(440, 0, 0.06, 0.35, 'square');
   else if(kind==='fin'){ tone(660,0,.25); tone(880,.25,.25); tone(1320,.5,.6); }
+  else if(role==='start'){
+    if(kind==='short'){ tone(660,0,.08); tone(990,.09,.14); }
+    else if(kind==='long'){ tone(660,0,.12); tone(990,.13,.4); }
+    else { tone(660,0,.1); tone(880,.13,.1); tone(1175,.26,.25); }
+  } else {
+    if(kind==='short') tone(880, 0, .3, .6, 'triangle', 587);
+    else if(kind==='long'){ tone(988,0,.18,.6,'triangle'); tone(659,.19,.6,.6,'triangle'); }
+    else { tone(1175,0,.12,.6,'triangle'); tone(880,.15,.12,.6,'triangle'); tone(659,.3,.4,.6,'triangle'); }
+  }
 }
-const bStart = it => it.bStart || 'none', bEnd = it => it.bEnd || 'long';
+const bStart = it => it.bStart || 'long', bEnd = it => it.bEnd || 'long';
 
 /* ---------- icônes de navigation / rendu ---------- */
 const app = document.getElementById('app');
@@ -658,6 +674,7 @@ function startRun(id){
   U.view = 'run';
   app.innerHTML = runShell();
   enterStep(0);
+  if(R.steps[0] && R.steps[0].t==='work') sound(bStart(w.items[R.steps[0].k]), 'start');
   clearInterval(timer); timer = setInterval(tick, 100);
   getWake();
 }
@@ -682,13 +699,15 @@ function runShell(){
       <button class="sk" data-act="next" aria-label="Suivant">${ico('skr')}</button></div></div>`;
 }
 const LABEL = {prep:'PRÉPARE-TOI', work:'TRAVAIL', rest:'REPOS', pause:'PAUSE'};
-function describe(s){
-  if(!s) return 'Fin de la séance';
-  const ex = exoById(R.w.items[s.k].exoId) || {nom:'?'};
-  if(s.t==='work') return `${ex.nom} · ${s.dur!=null ? s.dur+' s' : s.reps+' reps'}${s.side?' · '+s.side.toLowerCase():''}`;
-  if(s.t==='rest') return `Repos ${s.dur} s`;
-  if(s.t==='pause') return `Pause ${s.dur} s`;
-  return `Prépare-toi : ${ex.nom}`;
+function nextWork(n){ for(let j=n+1; j<R.steps.length; j++) if(R.steps[j].t==='work') return j; return -1; }
+const workDetail = s => `${s.dur!=null ? s.dur+' s' : s.reps+' reps'} · série ${s.set} / ${s.sets}${s.side ? ' · côté '+s.side.toLowerCase() : ''}`;
+function nextCard(n){
+  const s1 = R.steps[n+1];
+  if(!s1) return `<div class="nx"><div class="nm"><div class="nl">Ensuite</div><div class="nn">Fin de la séance</div></div></div>`;
+  const j = s1.t==='work' ? n+1 : nextWork(n), w2 = R.steps[j], ex2 = w2 ? (exoById(R.w.items[w2.k].exoId) || {nom:'?',poses:[ST]}) : null;
+  const head = s1.t==='work' ? ex2.nom : `${{rest:'Repos',pause:'Pause',prep:'Préparation'}[s1.t]} ${s1.dur} s`;
+  const sub = s1.t==='work' ? workDetail(s1) : (w2 ? `puis ${ex2.nom} · ${workDetail(w2)}` : 'puis fin de la séance');
+  return `<div class="nx">${ex2 ? `<div class="nf">${figOf(ex2)}</div>` : ''}<div class="nm"><div class="nl">Ensuite</div><div class="nn">${esc(head)}</div><div class="nd">${esc(sub)}</div></div></div>`;
 }
 function enterStep(n){
   if(n>=R.steps.length) return finish();
@@ -702,16 +721,16 @@ function enterStep(n){
   run.dataset.t = s.t;
   document.getElementById('rl').textContent = LABEL[s.t];
   document.getElementById('rtitle').textContent = `Exercice ${s.k+1} / ${R.w.items.length}` + (s.rds>1 ? ` · tour ${s.rd} / ${s.rds}` : '');
-  document.getElementById('rname').textContent = s.t==='rest' ? 'Récupère' : ex.nom;
-  document.getElementById('rsub').textContent = s.t==='work' ? `Série ${s.set} / ${s.sets}${s.side?' · côté '+s.side.toLowerCase():''}` : (s.t==='rest' ? 'Prochain : '+ex.nom : '');
-  document.getElementById('rfig').innerHTML = figOf(ex);
-  document.getElementById('rnext').textContent = 'Ensuite : ' + describe(R.steps[n+1]);
+  const nwi = s.t==='work' ? n : nextWork(n), nw = R.steps[nwi], exM = nw ? (exoById(R.w.items[nw.k].exoId) || {nom:'?',poses:[ST]}) : ex;
+  document.getElementById('rname').textContent = nw ? exM.nom : 'Fin de la séance';
+  document.getElementById('rsub').textContent = s.t==='work' ? workDetail(s) : (nw ? 'À suivre · ' + workDetail(nw) : '');
+  document.getElementById('rfig').innerHTML = figOf(exM);
+  document.getElementById('rnext').innerHTML = nextCard(nw ? nwi : n);
   document.getElementById('rdone').hidden = !(s.t==='work' && s.dur==null);
   document.querySelectorAll('#tl i').forEach((el,j)=>{ el.classList.toggle('past', j<n); el.firstChild.style.width = ''; });
   if(s.dur==null) document.getElementById('rn').textContent = s.reps + '';
   document.getElementById('rn').dataset.k = s.dur==null ? 'reps' : 't';
   if(s.dur==null) document.getElementById('rl').textContent = 'TRAVAIL · RÉPÉTITIONS';
-  if(s.t==='work' && !R.paused) sound(bStart(it));
   tick(true);
 }
 function tick(force){
@@ -722,8 +741,10 @@ function tick(force){
     if(R.paused){ var ms = R.rem; } else { ms = R.endAt - now; }
     const rem = Math.ceil(ms/1000);
     if(!R.paused && ms<=0){
-      const nx = R.steps[R.i+1], startNext = nx && nx.t==='work' && bStart(R.w.items[nx.k])!=='none';
-      if(!startNext) sound(s.t==='work' ? bEnd(R.w.items[s.k]) : 'long');
+      const nx = R.steps[R.i+1];
+      if(s.t==='work') sound(bEnd(R.w.items[s.k]), 'end');
+      else if(nx && nx.t==='work') sound(bStart(R.w.items[nx.k]), 'start');
+      else if(nx) sound('short', 'end');
       enterStep(R.i+1); return;
     }
     if(rem!==R.last || force){
@@ -791,14 +812,14 @@ document.addEventListener('click', ev=>{
     case 'run': audioInit(); U.wid = EMB?null:(U.wid||id); startRun(id); break;
     case 'quit': if(R && !R.done && !confirm('Quitter la séance ?')) break; stopRun(); break;
     case 'pp': togglePause(); break;
-    case 'next': if(R){ audioInit(); enterStep(R.i+1); } break;
+    case 'next': if(R){ audioInit(); const cs = R.steps[R.i]; if(cs && cs.t==='work' && cs.dur==null) sound(bEnd(R.w.items[cs.k]), 'end'); enterStep(R.i+1); } break;
     case 'prev': if(R){ const el2 = (Date.now()-R.t0) > 2000; enterStep(el2 ? R.i : R.i-1); } break;
     case 'jump': if(R) enterStep(+el.dataset.n); break;
     case 'snd': S.settings.sound = !S.settings.sound; save(); { const b = document.getElementById('sndb'); if(b) b.innerHTML = ico(S.settings.sound?'vol':'mute'); else render(); } if(S.settings.sound){ audioInit(); sound('warn'); } break;
     case 'open': U.open = U.open===i ? null : i; render(); break;
     case 'st': mutate(()=>{
         const w = wById(U.wid), it = w.items[i], f = el.dataset.f;
-        if(f==='mode') it.mode = el.dataset.v; else if(f==='bCount'){ it.bCount = el.dataset.v==='1'; if(it.bCount){ audioInit(); sound('warn'); } } else if(f==='bStart' || f==='bEnd'){ it[f] = el.dataset.v; audioInit(); sound(it[f]); } else if(f==='sides') it.sides = el.dataset.v==='1';
+        if(f==='mode') it.mode = el.dataset.v; else if(f==='bCount'){ it.bCount = el.dataset.v==='1'; if(it.bCount){ audioInit(); sound('warn'); } } else if(f==='bStart' || f==='bEnd'){ it[f] = el.dataset.v; audioInit(); sound(it[f], f==='bStart' ? 'start' : 'end'); } else if(f==='sides') it.sides = el.dataset.v==='1';
         else { const d = +el.dataset.d, v = it[f]; const stepv = (f==='work'||f==='rest') && (d<0 ? v<=10 : v<10) ? 1 : (f==='work'||f==='rest' ? 5 : 1); const min = {work:1,rest:0,sets:1,reps:1}[f];
           it[f] = Math.max(min, v + d*stepv); }
       }); break;
