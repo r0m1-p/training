@@ -435,7 +435,7 @@ function render(){
   else if(U.view==='catalogue') h = vCatalogue();
   else if(U.view==='embed') h = vEmbed();
   app.innerHTML = h + (U.sheet ? vSheet() : '') + (EMB ? '' : vNav());
-  placeTl(); requestAnimationFrame(placeTl);
+  placeTl(); requestAnimationFrame(placeTl); refreshShare();
 }
 function vNav(){
   if(U.view==='editor' || (U.view==='catalogue' && U.pick)) return '';
@@ -572,30 +572,57 @@ function allExos(){
 }
 function sharedData(w){ const ex = {}; w.items.forEach(it=>{ const e = exoById(it.exoId); if(e && e.custom) ex[e.id] = e; }); return {w, exos:Object.values(ex)}; }
 const importLink = w => APP_URL ? APP_URL + '#import=' + b64e(JSON.stringify(sharedData(w))) : null;
+/* lien court : séance compressée (deflate) en base64url */
+const bytesB64 = u8 => { let b = ''; u8.forEach(x=>b += String.fromCharCode(x)); return btoa(b).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); };
+const b64Bytes = str => Uint8Array.from(atob(str.replace(/-/g,'+').replace(/_/g,'/')), c=>c.charCodeAt(0));
+function packData(w){ const d = sharedData(JSON.parse(JSON.stringify(w))); delete d.w.id; return JSON.stringify(d); }
+async function shortLink(w){
+  if(!APP_URL) return null;
+  if(!window.CompressionStream) return importLink(w);
+  const st = new Blob([packData(w)]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+  return APP_URL + '#s=' + bytesB64(new Uint8Array(await new Response(st).arrayBuffer()));
+}
+async function unpackLink(str){
+  const st = new Blob([b64Bytes(str)]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return JSON.parse(await new Response(st).text());
+}
+let shareTok = 0;
+async function refreshShare(){
+  const els = document.querySelectorAll('[data-sh]'); if(!els.length) return;
+  const w = U.view==='embed' ? S.workouts[0] : wById(U.wid); if(!w) return;
+  const tok = ++shareTok; let link = null;
+  try{ link = await shortLink(w); }catch(e){ link = importLink(w); }
+  if(tok!==shareTok) return;
+  const t = encodeURIComponent(workoutText(w, link));
+  els.forEach(a=>{ const k = a.dataset.sh;
+    a.href = k==='mail' ? `mailto:?subject=${encodeURIComponent(w.name)}&body=${t}` : k==='wa' ? `https://wa.me/?text=${t}` : k==='sms' ? `sms:?&body=${t}` : (link || '#'); });
+}
 function importShared(w, exos){
   w = JSON.parse(JSON.stringify(w)); w.id = uid();
   (exos||[]).forEach(c=>{ if(c.custom && !S.custom.some(x=>x.id===c.id)) S.custom.push(c); });
   S.workouts.push(w); save(); return w;
 }
-function workoutText(w){
+function workoutText(w, link){
   const st = startTimes(w), line = (k,ind) => { const it = w.items[k], ex = exoById(it.exoId) || {nom:'?'};
     return `${ind}${fmt(st[k]||0)}  ${it.exoId==='pause' ? 'Pause · '+it.work+' s' : ex.nom+' · '+summary(it)}`; };
-  const out = [`${w.name}`, `${Math.round(totalTime(w)/60)} min · ${w.items.length} exercices`, ''];
+  if(link===undefined) link = importLink(w);
+  const out = [`${w.name} · ${Math.round(totalTime(w)/60)} min · ${w.items.length} exercices`];
+  if(link) out.push(`👉 Ajouter à ton appli : ${link}`);
+  out.push('');
   runs(w).forEach(r=>{
     if(!r.blk){ out.push(line(r.idx[0],'')); return; }
     const b = w.blocks[r.blk]; out.push(`${b.name} × ${b.rounds} tours (pause ${b.pauseEx} s, entre tours ${b.pauseRound} s)`);
     r.idx.forEach(k=>out.push(line(k,'  ')));
   });
   out.push('', `Fin à ${fmt(totalTime(w))}`);
-  const link = importLink(w); if(link) out.push('', `Ajouter cette séance à ton appli : ${link}`);
   return out.join('\n');
 }
 function shareRow(w){
   const t = encodeURIComponent(workoutText(w));
   return `<div class="row sp" style="margin-top:16px"><span class="mute">Partager la séance</span><div class="row" style="gap:2px">
-    <a class="ib sh" title="Mail" aria-label="Partager par mail" href="mailto:?subject=${encodeURIComponent(w.name)}&body=${t}">${ico('mail')}</a>
-    <a class="ib sh" title="WhatsApp" aria-label="Partager sur WhatsApp" href="https://wa.me/?text=${t}" target="_blank" rel="noopener">${ico('wa')}</a>
-    <a class="ib sh" title="Message" aria-label="Partager par message" href="sms:?&body=${t}">${ico('chat')}</a>
+    <a class="ib sh" data-sh="mail" title="Mail" aria-label="Partager par mail" href="mailto:?subject=${encodeURIComponent(w.name)}&body=${t}">${ico('mail')}</a>
+    <a class="ib sh" data-sh="wa" title="WhatsApp" aria-label="Partager sur WhatsApp" href="https://wa.me/?text=${t}" target="_blank" rel="noopener">${ico('wa')}</a>
+    <a class="ib sh" data-sh="sms" title="Message" aria-label="Partager par message" href="sms:?&body=${t}">${ico('chat')}</a>
     <button class="ib sh" title="Fichier .html" aria-label="Partager le fichier .html" data-act="exp">${ico('share')}</button></div></div>`;
 }
 function vCatalogue(){
@@ -659,7 +686,7 @@ function vEmbed(){
   return `<div class="top"><h1>${esc(w.name)}</h1><button class="ib" data-act="snd" aria-label="Son">${ico(S.settings.sound?'vol':'mute')}</button></div>
     <div class="hero"><h2>${Math.round(totalTime(w)/60)} min · ${w.items.length} exercices</h2><div style="opacity:.9;font-size:14px">Préparation ${w.prep} s · pause ${w.pause} s entre exercices</div></div>
     <div class="tlw"><div class="tlr" id="tlr"></div><div class="list">${items}</div></div>
-    ${APP_URL ? `<a class="btn w" style="margin-top:16px" href="${importLink(w)}">${ico('plus')} Ajouter à mon appli training</a>` : ''}
+    ${APP_URL ? `<a class="btn w" style="margin-top:16px" data-sh="imp" href="${importLink(w)}">${ico('plus')} Ajouter à mon appli training</a>` : ''}
     ${shareRow(w)}
     <div style="position:sticky;bottom:12px;margin-top:18px"><button class="btn p w" data-act="run" data-id="${w.id}" style="padding:15px;font-size:17px">${ico('play')} Démarrer</button></div>`;
 }
@@ -1023,6 +1050,13 @@ document.addEventListener('pointerup', ()=>dragEnd(true));
 document.addEventListener('pointercancel', ()=>dragEnd(false));
 
 /* ---------- démarrage ---------- */
+function askImport(d){
+  if(confirm(`Ajouter la séance « ${d.w.name} » à tes séances ?`)){ const nw = importShared(d.w, d.exos); U.view = 'editor'; U.wid = nw.id; U.open = null; render(); }
+}
+if(!EMB && location.hash.startsWith('#s=')){
+  const code = location.hash.slice(3); history.replaceState(null, '', location.pathname + location.search);
+  unpackLink(code).then(d=>setTimeout(()=>askImport(d), 50)).catch(()=>setTimeout(()=>toast('Lien de séance invalide'), 300));
+}
 if(!EMB && location.hash.startsWith('#import=')){
   try{ const d = JSON.parse(b64d(location.hash.slice(8)));
     history.replaceState(null, '', location.pathname + location.search);
